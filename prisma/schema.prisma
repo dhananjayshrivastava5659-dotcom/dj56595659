@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum EventStatus {
+  UPCOMING
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum EventType {
+  OPEN_EVENT
+  INVITATION_ONLY
+  BRANDING_ACTIVITY
+  OTHER
+}
+
+enum EventTopic {
+  FINANCIAL
+  NON_FINANCIAL
+  BOTH
+}
+
+enum VenueType {
+  BRANCH
+  RWA_SOCIETY
+  CORPORATE_INSTITUTION
+  ONLINE_WEBINAR
+  HOTEL_CLUB_BANQUET
+}
+
+enum CustomerStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Event {
+  id            String      @id
+  eventCode     String      @unique
+  name          String
+  type          EventType
+  otherType     String?
+  topic         EventTopic
+  venueType     VenueType
+  venue         String
+  city          String
+  state         String
+  date          String
+  time          String
+  description   String?
+  status        EventStatus @default(UPCOMING)
+  creatorId     String
+  creatorName   String
+  tags          String[]
+  customerCount Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  customers     Customer[]
+  creatives     Creative[]
+  subscriptions Subscription[]
+}
+
+model Customer {
+  id                String         @id
+  eventId           String
+  addedById         String
+  addedByName       String
+  fullName          String
+  mobile            String
+  email             String?
+  organisation      String?
+  guestsAccompanied Int?
+  status            CustomerStatus @default(PENDING)
+  reviewNote        String?
+  reviewedAt        DateTime?
+  createdAt         DateTime       @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model Creative {
+  id               String   @id
+  eventId          String
+  eventName        String
+  uploadedById     String
+  uploadedByName   String
+  label            String
+  fileName         String
+  mimeType         String
+  sizeBytes        Int
+  fileData         Bytes
+  isPersonalizable Boolean  @default(false)
+  namePosition     Json?
+  createdAt        DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id
+  userId    String
+  title     String
+  message   String
+  type      String
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Subscription {
+  userId  String
+  eventId String
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@id([userId, eventId])
+}

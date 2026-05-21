@@ -1,0 +1,153 @@
+@import "tailwindcss";
+
+/* ─── Mulish Font ──────────────────────────────────────── */
+@font-face {
+  font-family: 'Mulish';
+  src: url('/fonts/Mulish-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Mulish';
+  src: url('/fonts/Mulish-Italic-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ─── Tailwind v4 Theme ───────────────────────────────── */
+@theme {
+  /* ICICI Brand */
+  --color-brand:       #DB620A;
+  --color-brand-dark:  #B5500A;
+  --color-brand-light: #FEF0E7;
+  --color-brand-muted: #F4AC7D;
+
+  /* Navy */
+  --color-navy:        #053C6D;
+  --color-navy-dark:   #032952;
+  --color-navy-light:  #EBF2FF;
+
+  /* Status */
+  --color-success:       #059669;
+  --color-success-light: #ECFDF5;
+  --color-warning:       #D97706;
+  --color-warning-light: #FFFBEB;
+  --color-danger:        #DC2626;
+  --color-danger-light:  #FEF2F2;
+  --color-info:          #2563EB;
+  --color-info-light:    #EFF6FF;
+  --color-gold:          #FDB92A;
+  --color-gold-light:    #FEFCE8;
+  --color-crimson:       #97291E;
+  --color-crimson-light: #FEF2F1;
+
+  /* Surface */
+  --color-surface:      #F8FAFC;
+  --color-card:         #FFFFFF;
+  --color-border:       #E2E8F0;
+  --color-border-light: #F1F5F9;
+
+  /* Text */
+  --color-text-primary:   #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-muted:     #94A3B8;
+
+  /* Font */
+  --font-sans: 'Mulish', ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  /* Shadows */
+  --shadow-card: 0 1px 3px 0 rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.06);
+  --shadow-md:   0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.07);
+  --shadow-lg:   0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
+  --shadow-xl:   0 20px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.04);
+}
+
+/* ─── CSS Variables ──────────────────────────────────── */
+:root {
+  --sidebar-width: 260px;
+  --topnav-height: 64px;
+}
+
+/* ─── Base ───────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #F8FAFC;
+  color: #0F172A;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #F1F5F9; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+/* ─── Focus ring ─────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #DB620A;
+  outline-offset: 2px;
+}
+
+/* ─── Selection ──────────────────────────────────────── */
+::selection {
+  background: #FEF0E7;
+  color: #B5500A;
+}
+
+/* ─── Animation utilities ────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse-brand {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(219,98,10,0.3); }
+  50%       { box-shadow: 0 0 0 6px rgba(219,98,10,0); }
+}
+
+.animate-fade-in   { animation: fadeIn 0.25s ease-out; }
+.animate-slide-in  { animation: slideInRight 0.25s ease-out; }
+.animate-pulse-brand { animation: pulse-brand 2s ease infinite; }
+
+/* ─── Page entry animation ───────────────────────────── */
+.page-enter {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* ─── Glass card ─────────────────────────────────────── */
+.glass {
+  background: rgba(255,255,255,0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.3);
+}
+
+/* ─── Status dots ────────────────────────────────────── */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* ─── Print ──────────────────────────────────────────── */
+@media print {
+  .no-print { display: none !important; }
+}
