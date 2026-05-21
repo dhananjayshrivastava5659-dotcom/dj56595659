@@ -53,26 +53,53 @@ function hexToRgbNorm(hex: string): [number, number, number] {
 async function generatePersonalizedCreative(
   creative: Creative,
   name: string,
+  rsvpToken?: string,
 ): Promise<{ blob: Blob; ext: string }> {
-  const pos = creative.namePosition!;
+  const pos = creative.namePosition;
   const fileRes = await fetch(`/api/creatives/${creative.id}/file`);
 
   if (creative.mimeType === 'application/pdf') {
-    const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
+    const { PDFDocument, rgb, StandardFonts, PDFName, PDFString, PDFDict } = await import('pdf-lib');
     const bytes = await fileRes.arrayBuffer();
     const pdfDoc = await PDFDocument.load(bytes);
     const [page] = pdfDoc.getPages();
-    const { width, height } = page.getSize();
-    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    const fontSize = (pos.fontSizePct / 100) * height;
-    const textWidth = font.widthOfTextAtSize(name, fontSize);
-    let x = (pos.xPct / 100) * width;
-    // PDF y=0 is bottom-left; convert from top-percentage
-    const y = height - (pos.yPct / 100) * height;
-    if (pos.align === 'center') x -= textWidth / 2;
-    else if (pos.align === 'right') x -= textWidth;
-    const [r, g, b] = hexToRgbNorm(pos.color);
-    page.drawText(name, { x, y, size: fontSize, font, color: rgb(r, g, b) });
+
+    // 1. Inject customer name if position is defined
+    if (pos) {
+      const { width, height } = page.getSize();
+      const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const fontSize = (pos.fontSizePct / 100) * height;
+      const textWidth = font.widthOfTextAtSize(name, fontSize);
+      let x = (pos.xPct / 100) * width;
+      const y = height - (pos.yPct / 100) * height;
+      if (pos.align === 'center') x -= textWidth / 2;
+      else if (pos.align === 'right') x -= textWidth;
+      const [r, g, b] = hexToRgbNorm(pos.color);
+      page.drawText(name, { x, y, size: fontSize, font, color: rgb(r, g, b) });
+    }
+
+    // 2. Replace RSVP links if rsvpToken provided
+    if (rsvpToken) {
+      const base = window.location.origin;
+      const attendingUrl  = `${base}/api/rsvp?token=${rsvpToken}&response=ATTENDING`;
+      const maybeUrl      = `${base}/api/rsvp?token=${rsvpToken}&response=MAYBE`;
+      const notGoingUrl   = `${base}/api/rsvp?token=${rsvpToken}&response=NOT_ATTENDING`;
+
+      for (const [, obj] of pdfDoc.context.enumerateIndirectObjects()) {
+        if (!(obj instanceof PDFDict)) continue;
+        const uriEntry = obj.get(PDFName.of('URI'));
+        if (!(uriEntry instanceof PDFString)) continue;
+        const uriVal = uriEntry.asString();
+        if (uriVal.includes('Rsvp=Confirmed') || uriVal.includes('Rsvp%3DConfirmed')) {
+          obj.set(PDFName.of('URI'), PDFString.of(attendingUrl));
+        } else if (uriVal.includes('Rsvp=Maybe') || uriVal.includes('Rsvp%3DMaybe')) {
+          obj.set(PDFName.of('URI'), PDFString.of(maybeUrl));
+        } else if (uriVal.includes('Rsvp=Declined') || uriVal.includes('Rsvp%3DDeclined')) {
+          obj.set(PDFName.of('URI'), PDFString.of(notGoingUrl));
+        }
+      }
+    }
+
     const out = await pdfDoc.save();
     return { blob: new Blob([out as unknown as Uint8Array<ArrayBuffer>], { type: 'application/pdf' }), ext: 'pdf' };
   }
@@ -88,14 +115,16 @@ async function generatePersonalizedCreative(
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(img, 0, 0);
-      const fontSize = (pos.fontSizePct / 100) * img.naturalHeight;
-      const x = (pos.xPct / 100) * img.naturalWidth;
-      const y = (pos.yPct / 100) * img.naturalHeight;
-      ctx.font = `bold ${fontSize}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
-      ctx.fillStyle = pos.color;
-      ctx.textAlign = pos.align as CanvasTextAlign;
-      ctx.textBaseline = 'middle';
-      ctx.fillText(name, x, y);
+      if (pos) {
+        const fontSize = (pos.fontSizePct / 100) * img.naturalHeight;
+        const x = (pos.xPct / 100) * img.naturalWidth;
+        const y = (pos.yPct / 100) * img.naturalHeight;
+        ctx.font = `bold ${fontSize}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+        ctx.fillStyle = pos.color;
+        ctx.textAlign = pos.align as CanvasTextAlign;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(name, x, y);
+      }
       URL.revokeObjectURL(imgUrl);
       canvas.toBlob(b => resolve({ blob: b!, ext: 'png' }), 'image/png');
     };
@@ -307,7 +336,7 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
     const name = customName.trim() || customer.fullName;
     setGenerating(true); setError('');
     try {
-      const { blob, ext } = await generatePersonalizedCreative(selected, name);
+      const { blob, ext } = await generatePersonalizedCreative(selected, name, customer.rsvpToken);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -330,6 +359,24 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
       await generateHtmlInvite(selected, customer);
     } catch {
       setError('Failed to generate HTML invite. Please try again.');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handlePdfRsvpOnly() {
+    if (!selected) return;
+    setGenerating(true); setError('');
+    try {
+      const { blob, ext } = await generatePersonalizedCreative(selected, '', customer.rsvpToken);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invite-${customer.fullName.replace(/\s+/g, '-')}.${ext}`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setError('Failed to generate invite with RSVP links. Please try again.');
     } finally {
       setGenerating(false);
     }
@@ -430,6 +477,17 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
                   <p className={`text-sm font-semibold ${mode === 'personal' ? 'text-[#DB620A]' : 'text-[#475569]'}`}>Personalised</p>
                   <p className="text-xs text-[#94A3B8] mt-0.5">Add customer name</p>
                 </button>
+              </div>
+            )}
+
+            {/* RSVP-only download — for non-personalizable PDFs */}
+            {selected && !isHtml && isPdf && !selected.isPersonalizable && (
+              <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] p-3 space-y-2">
+                <p className="text-xs font-semibold text-[#1D4ED8]">Inject RSVP Tracking Links</p>
+                <p className="text-xs text-[#3B82F6]">Generates a copy of this PDF with personalised Attending / Maybe / Not Attending links for <strong>{customer.fullName}</strong>.</p>
+                <Button className="w-full" loading={generating} onClick={handlePdfRsvpOnly}>
+                  <Download size={15} /> Generate Invite with RSVP Links
+                </Button>
               </div>
             )}
 
