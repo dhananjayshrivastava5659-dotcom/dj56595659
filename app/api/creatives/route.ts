@@ -43,9 +43,9 @@ export async function POST(req: NextRequest) {
   const event = await getEventById(eventId);
   if (!event) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
 
-  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'];
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'text/html'];
   if (!ALLOWED_TYPES.includes(file.type)) {
-    return NextResponse.json({ error: 'Only JPG, PNG, WEBP, GIF, and PDF files are allowed.' }, { status: 400 });
+    return NextResponse.json({ error: 'Only JPG, PNG, WEBP, GIF, PDF, and HTML files are allowed.' }, { status: 400 });
   }
 
   const MAX_SIZE = 10 * 1024 * 1024; // 10 MB

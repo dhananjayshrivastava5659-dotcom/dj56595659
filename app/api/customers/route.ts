@@ -47,6 +47,8 @@ export async function POST(req: NextRequest) {
     organisation: organisation?.trim() || undefined,
     guestsAccompanied: guestsAccompanied ? parseInt(guestsAccompanied) : undefined,
     status: 'PENDING',
+    rsvpStatus: 'NO_RESPONSE',
+    rsvpToken: '',          // DB auto-generates via gen_random_uuid()
     createdAt: new Date().toISOString(),
   };
 

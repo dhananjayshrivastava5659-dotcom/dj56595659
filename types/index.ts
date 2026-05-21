@@ -36,6 +36,7 @@ export interface Event {
 }
 
 export type CustomerStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type RsvpStatus = 'NO_RESPONSE' | 'ATTENDING' | 'MAYBE' | 'NOT_ATTENDING';
 
 export interface Customer {
   id: string;
@@ -50,6 +51,8 @@ export interface Customer {
   status: CustomerStatus;
   reviewNote?: string;
   reviewedAt?: string;
+  rsvpStatus: RsvpStatus;
+  rsvpToken: string;
   createdAt: string;
 }
 

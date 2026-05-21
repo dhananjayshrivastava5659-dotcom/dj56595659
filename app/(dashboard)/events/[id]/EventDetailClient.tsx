@@ -13,7 +13,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatDate, STATUS_COLORS, STATUS_LABELS, getInitials } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import type { User, Event, Customer, CustomerStatus, Creative } from '@/types';
+import type { User, Event, Customer, CustomerStatus, Creative, RsvpStatus } from '@/types';
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   OPEN_EVENT: 'Open Event', INVITATION_ONLY: 'By Invitation',
@@ -32,6 +32,13 @@ const STATUS_CHIP: Record<CustomerStatus, { label: string; className: string; ic
   PENDING:  { label: 'Pending',  className: 'bg-[#FEF9C3] text-[#A16207]',  icon: <Clock size={11} /> },
   APPROVED: { label: 'Approved', className: 'bg-[#DCFCE7] text-[#15803D]',  icon: <CheckCircle2 size={11} /> },
   REJECTED: { label: 'Rejected', className: 'bg-[#FEE2E2] text-[#DC2626]',  icon: <XCircle size={11} /> },
+};
+
+const RSVP_CHIP: Record<RsvpStatus, { label: string; className: string }> = {
+  NO_RESPONSE:   { label: 'No Response',   className: 'bg-[#F1F5F9] text-[#64748B]' },
+  ATTENDING:     { label: '✓ Attending',   className: 'bg-[#DCFCE7] text-[#15803D]' },
+  MAYBE:         { label: '? Maybe',       className: 'bg-[#FEF9C3] text-[#A16207]' },
+  NOT_ATTENDING: { label: '✗ Not Going',   className: 'bg-[#FEE2E2] text-[#DC2626]' },
 };
 
 function hexToRgbNorm(hex: string): [number, number, number] {
@@ -95,6 +102,47 @@ async function generatePersonalizedCreative(
     img.onerror = () => { URL.revokeObjectURL(imgUrl); reject(new Error('Image load failed')); };
     img.src = imgUrl;
   });
+}
+
+async function generateHtmlInvite(
+  creative: Creative,
+  customer: Customer,
+): Promise<void> {
+  const baseUrl = window.location.origin;
+  const attendingUrl  = `${baseUrl}/api/rsvp?token=${customer.rsvpToken}&response=ATTENDING`;
+  const maybeUrl      = `${baseUrl}/api/rsvp?token=${customer.rsvpToken}&response=MAYBE`;
+  const notGoingUrl   = `${baseUrl}/api/rsvp?token=${customer.rsvpToken}&response=NOT_ATTENDING`;
+
+  const res = await fetch(`/api/creatives/${creative.id}/file`);
+  let html = await res.text();
+
+  // Replace name + RSVP URL placeholders
+  html = html
+    .replace(/\{\{CUSTOMER_NAME\}\}/g, customer.fullName)
+    .replace(/\{\{ATTENDING_URL\}\}/g, attendingUrl)
+    .replace(/\{\{MAYBE_URL\}\}/g, maybeUrl)
+    .replace(/\{\{NOT_ATTENDING_URL\}\}/g, notGoingUrl);
+
+  // Render in a hidden iframe then use html2pdf
+  const html2pdf = (await import('html2pdf.js')).default;
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  document.body.appendChild(container);
+
+  await html2pdf()
+    .set({
+      margin: 0,
+      filename: `invite-${customer.fullName.replace(/\s+/g, '-')}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    })
+    .from(container)
+    .save();
+
+  document.body.removeChild(container);
 }
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -275,7 +323,20 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
     }
   }
 
-  const isPdf = selected?.mimeType === 'application/pdf';
+  async function handleHtmlInvite() {
+    if (!selected) return;
+    setGenerating(true); setError('');
+    try {
+      await generateHtmlInvite(selected, customer);
+    } catch {
+      setError('Failed to generate HTML invite. Please try again.');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  const isPdf  = selected?.mimeType === 'application/pdf';
+  const isHtml = selected?.mimeType === 'text/html';
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose(); }}>
@@ -323,8 +384,21 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
               </div>
             )}
 
+            {/* HTML invite — direct generate */}
+            {selected && isHtml && (
+              <div className="space-y-3">
+                <div className="p-3 rounded-lg bg-[#EFF6FF] border border-[#BFDBFE] text-xs text-[#1D4ED8] space-y-1">
+                  <p className="font-semibold">HTML Template Detected</p>
+                  <p>This will replace <code>{'{{CUSTOMER_NAME}}'}</code> with <strong>{customer.fullName}</strong> and inject unique RSVP tracking links for Attending / Maybe / Not Attending.</p>
+                </div>
+                <Button className="w-full" loading={generating} onClick={handleHtmlInvite}>
+                  <Sparkles size={15} /> Generate Personalised Invite PDF
+                </Button>
+              </div>
+            )}
+
             {/* Mode selector */}
-            {selected && (
+            {selected && !isHtml && (
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -359,15 +433,15 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
               </div>
             )}
 
-            {/* Non-Personalised action */}
-            {mode === 'nonPersonal' && (
+            {/* Non-Personalised / Personalised actions — only for non-HTML */}
+            {!isHtml && mode === 'nonPersonal' && (
               <Button className="w-full" onClick={handleNonPersonalDownload}>
                 <Download size={15} /> Download Invite
               </Button>
             )}
 
             {/* Personalised action */}
-            {mode === 'personal' && selected?.isPersonalizable && (
+            {!isHtml && mode === 'personal' && selected?.isPersonalizable && (
               <div className="space-y-3">
                 <div className="space-y-1.5">
                   <label className="text-sm font-semibold text-[#0F172A]">Name on Invite</label>
@@ -430,6 +504,11 @@ function CustomerRow({ customer, onShare }: { customer: Customer; onShare?: () =
           +{customer.guestsAccompanied} guest{customer.guestsAccompanied !== 1 ? 's' : ''}
         </span>
       ) : null}
+      {customer.status === 'APPROVED' && (
+        <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${RSVP_CHIP[customer.rsvpStatus ?? 'NO_RESPONSE'].className}`}>
+          {RSVP_CHIP[customer.rsvpStatus ?? 'NO_RESPONSE'].label}
+        </span>
+      )}
       <span className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${chip.className}`}>
         {chip.icon}{chip.label}
       </span>
@@ -617,6 +696,11 @@ export function EventDetailClient({ user, eventId }: Props) {
               <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Users size={15} className="text-[#DB620A]" />Summary</CardTitle></CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <div className="flex justify-between"><span className="text-[#94A3B8]">Customers Approved</span><span className="font-semibold text-[#0F172A]">{event.customerCount ?? 0}</span></div>
+                {approved.length > 0 && (<>
+                  <div className="flex justify-between"><span className="text-[#94A3B8]">✓ Attending</span><span className="font-semibold text-[#15803D]">{approved.filter(c=>c.rsvpStatus==='ATTENDING').length}</span></div>
+                  <div className="flex justify-between"><span className="text-[#94A3B8]">? Maybe</span><span className="font-semibold text-[#A16207]">{approved.filter(c=>c.rsvpStatus==='MAYBE').length}</span></div>
+                  <div className="flex justify-between"><span className="text-[#94A3B8]">✗ Not Going</span><span className="font-semibold text-[#DC2626]">{approved.filter(c=>c.rsvpStatus==='NOT_ATTENDING').length}</span></div>
+                </>)}
                 <div className="flex justify-between"><span className="text-[#94A3B8]">Created By</span><span className="font-semibold text-[#0F172A]">{event.creatorName}</span></div>
                 {event.tags && event.tags.length > 0 && (
                   <div className="flex justify-between items-start gap-2">

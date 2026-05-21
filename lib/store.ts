@@ -42,6 +42,8 @@ function mapCustomer(c: any): Customer {
     status: c.status,
     reviewNote: c.reviewNote ?? undefined,
     reviewedAt: c.reviewedAt instanceof Date ? c.reviewedAt.toISOString() : (c.reviewedAt ?? undefined),
+    rsvpStatus: c.rsvpStatus ?? 'NO_RESPONSE',
+    rsvpToken: c.rsvpToken ?? '',
     createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : c.createdAt,
   };
 }
@@ -342,4 +344,26 @@ export async function markAllNotificationsRead(userId: string): Promise<void> {
     where: { userId, read: false },
     data: { read: true },
   });
+}
+
+// ── RSVP ─────────────────────────────────────────────────────────────────────
+
+export async function getCustomerByRsvpToken(token: string): Promise<Customer | undefined> {
+  const row = await prisma.customer.findUnique({ where: { rsvpToken: token } });
+  return row ? mapCustomer(row) : undefined;
+}
+
+export async function recordRsvp(
+  token: string,
+  status: 'ATTENDING' | 'MAYBE' | 'NOT_ATTENDING',
+): Promise<Customer | null> {
+  try {
+    const updated = await prisma.customer.update({
+      where: { rsvpToken: token },
+      data: { rsvpStatus: status as any },
+    });
+    return mapCustomer(updated);
+  } catch {
+    return null;
+  }
 }

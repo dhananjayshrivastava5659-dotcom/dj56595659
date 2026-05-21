@@ -41,6 +41,13 @@ enum CustomerStatus {
   REJECTED
 }
 
+enum RsvpStatus {
+  NO_RESPONSE
+  ATTENDING
+  MAYBE
+  NOT_ATTENDING
+}
+
 model Event {
   id            String      @id
   eventCode     String      @unique
@@ -81,6 +88,8 @@ model Customer {
   status            CustomerStatus @default(PENDING)
   reviewNote        String?
   reviewedAt        DateTime?
+  rsvpStatus        RsvpStatus     @default(NO_RESPONSE)
+  rsvpToken         String         @unique @default(dbgenerated("gen_random_uuid()::text"))
   createdAt         DateTime       @default(now())
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
