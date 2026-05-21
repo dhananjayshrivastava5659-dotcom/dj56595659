@@ -41,8 +41,16 @@ export async function POST(req: NextRequest) {
     customerCount: 0,
   };
 
-  await addEvent(newEvent);
-  await subscribe(user.id, newEvent.id);
+  try {
+    await addEvent(newEvent);
+    await subscribe(user.id, newEvent.id);
+  } catch (err: any) {
+    console.error('[POST /api/events] DB error:', err);
+    return NextResponse.json(
+      { error: `Database error: ${err?.message ?? String(err)}` },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({ event: newEvent }, { status: 201 });
 }
