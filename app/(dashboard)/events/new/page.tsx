@@ -90,6 +90,7 @@ function CopyButton({ text }: { text: string }) {
 
 export default function NewEventPage() {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [createdEvent, setCreatedEvent] = useState<{ name: string; eventCode: string; id: string } | null>(null);
   const [form, setForm] = useState({
     name: '', type: '', otherType: '', topic: '', venueType: '',
@@ -107,16 +108,21 @@ export default function NewEventPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch('/api/events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, ...(form.type !== 'OTHER' && { otherType: undefined }) }),
       });
+      const data = await res.json();
       if (res.ok) {
-        const { event } = await res.json();
-        setCreatedEvent({ name: event.name, eventCode: event.eventCode, id: event.id });
+        setCreatedEvent({ name: data.event.name, eventCode: data.event.eventCode, id: data.event.id });
+      } else {
+        setError(data.error || `Server error (${res.status}). Please try again.`);
       }
+    } catch (err) {
+      setError('Network error — please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -279,6 +285,12 @@ export default function NewEventPage() {
             <p className="text-xs text-[#94A3B8] mt-2">Add tags to help categorize and filter events</p>
           </CardContent>
         </Card>
+
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            ⚠️ {error}
+          </div>
+        )}
 
         <div className="flex items-center gap-3 justify-end">
           <Button variant="outline" type="button" asChild>
