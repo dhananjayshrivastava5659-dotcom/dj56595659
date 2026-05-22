@@ -74,18 +74,23 @@ async function generatePersonalizedCreative(
 
   if (creative.mimeType === 'application/pdf') {
     const { PDFDocument, rgb, StandardFonts, PDFName, PDFString, PDFDict } = await import('pdf-lib');
+    const fontkit = (await import('@pdf-lib/fontkit')).default;
     const bytes = await fileRes.arrayBuffer();
     const pdfDoc = await PDFDocument.load(bytes);
+    pdfDoc.registerFontkit(fontkit);
     const [page] = pdfDoc.getPages();
 
     // 1. Inject customer name if position is defined
     if (pos) {
       const { width, height } = page.getSize();
-      const mulishRes  = await fetch('/fonts/Mulish-Bold.ttf').catch(() => null);
-      const mulishData = mulishRes ? new Uint8Array(await mulishRes.arrayBuffer()) : null;
-      const font = mulishData
-        ? await pdfDoc.embedFont(mulishData)
-        : await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      let font;
+      try {
+        const mulishRes = await fetch('/fonts/Mulish-Bold.ttf');
+        if (mulishRes.ok) {
+          font = await pdfDoc.embedFont(new Uint8Array(await mulishRes.arrayBuffer()));
+        }
+      } catch { /* fallthrough to standard font */ }
+      if (!font) font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
       const fontSize = (pos.fontSizePct / 100) * height;
       const textWidth = font.widthOfTextAtSize(name, fontSize);
       let x = (pos.xPct / 100) * width;
@@ -124,11 +129,13 @@ async function generatePersonalizedCreative(
 
   // Image → PDF via pdf-lib
   const { PDFDocument, rgb, StandardFonts, PDFName, PDFString } = await import('pdf-lib');
+  const fontkit = (await import('@pdf-lib/fontkit')).default;
   const bytes = new Uint8Array(await fileRes.arrayBuffer());
   const qrPos    = creative.qrPosition;
   const rsvpArea = creative.rsvpArea;
 
   const pdfDoc = await PDFDocument.create();
+  pdfDoc.registerFontkit(fontkit);
 
   // Embed the image (convert non-JPEG to PNG via canvas first)
   let embeddedImage;
@@ -163,11 +170,14 @@ async function generatePersonalizedCreative(
 
   // 1. Name text
   if (pos && name.trim()) {
-    const mulishRes  = await fetch('/fonts/Mulish-Bold.ttf').catch(() => null);
-    const mulishData = mulishRes ? new Uint8Array(await mulishRes.arrayBuffer()) : null;
-    const font = mulishData
-      ? await pdfDoc.embedFont(mulishData)
-      : await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    let font;
+    try {
+      const mulishRes = await fetch('/fonts/Mulish-Bold.ttf');
+      if (mulishRes.ok) {
+        font = await pdfDoc.embedFont(new Uint8Array(await mulishRes.arrayBuffer()));
+      }
+    } catch { /* fallthrough to standard font */ }
+    if (!font) font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const fontSize = (pos.fontSizePct / 100) * height;
     const textWidth = font.widthOfTextAtSize(name, fontSize);
     let x = (pos.xPct / 100) * width;
