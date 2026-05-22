@@ -66,6 +66,17 @@ export interface NamePosition {
   align: 'left' | 'center' | 'right';
 }
 
+export interface QrPosition {
+  xPct: number;    // centre-x as % of image width
+  yPct: number;    // centre-y as % of image height (from top)
+  sizePct: number; // side length as % of image height
+}
+
+export interface RsvpArea {
+  y1Pct: number;   // top of button strip as % from top of image
+  y2Pct: number;   // bottom of button strip as % from top of image
+}
+
 export interface Creative {
   id: string;
   eventId: string;
@@ -78,6 +89,8 @@ export interface Creative {
   sizeBytes: number;
   isPersonalizable: boolean;
   namePosition?: NamePosition;
+  qrPosition?: QrPosition;
+  rsvpArea?: RsvpArea;
   createdAt: string;
 }
 

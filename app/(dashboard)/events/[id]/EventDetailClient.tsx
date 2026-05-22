@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -105,33 +105,105 @@ async function generatePersonalizedCreative(
     return { blob: new Blob([out as unknown as Uint8Array<ArrayBuffer>], { type: 'application/pdf' }), ext: 'pdf' };
   }
 
-  // Image — use Canvas API
-  const imgBlob = await fileRes.blob();
-  const imgUrl = URL.createObjectURL(imgBlob);
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0);
-      if (pos) {
-        const fontSize = (pos.fontSizePct / 100) * img.naturalHeight;
-        const x = (pos.xPct / 100) * img.naturalWidth;
-        const y = (pos.yPct / 100) * img.naturalHeight;
-        ctx.font = `bold ${fontSize}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
-        ctx.fillStyle = pos.color;
-        ctx.textAlign = pos.align as CanvasTextAlign;
-        ctx.textBaseline = 'middle';
-        ctx.fillText(name, x, y);
-      }
-      URL.revokeObjectURL(imgUrl);
-      canvas.toBlob(b => resolve({ blob: b!, ext: 'png' }), 'image/png');
-    };
-    img.onerror = () => { URL.revokeObjectURL(imgUrl); reject(new Error('Image load failed')); };
-    img.src = imgUrl;
-  });
+  // Image → PDF via pdf-lib
+  const { PDFDocument, rgb, StandardFonts, PDFName, PDFString } = await import('pdf-lib');
+  const bytes = new Uint8Array(await fileRes.arrayBuffer());
+  const qrPos    = creative.qrPosition;
+  const rsvpArea = creative.rsvpArea;
+
+  const pdfDoc = await PDFDocument.create();
+
+  // Embed the image (convert non-JPEG to PNG via canvas first)
+  let embeddedImage;
+  if (creative.mimeType === 'image/jpeg') {
+    embeddedImage = await pdfDoc.embedJpg(bytes);
+  } else {
+    // PNG / WEBP / GIF → convert to PNG via canvas
+    const pngBytes = await new Promise<Uint8Array>((resolve, reject) => {
+      const blob = new Blob([bytes], { type: creative.mimeType });
+      const blobUrl = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext('2d')!.drawImage(img, 0, 0);
+        URL.revokeObjectURL(blobUrl);
+        canvas.toBlob(
+          b => b!.arrayBuffer().then(buf => resolve(new Uint8Array(buf))),
+          'image/png',
+        );
+      };
+      img.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error('Image load failed')); };
+      img.src = blobUrl;
+    });
+    embeddedImage = await pdfDoc.embedPng(pngBytes);
+  }
+
+  const { width, height } = embeddedImage.scale(1);
+  const page = pdfDoc.addPage([width, height]);
+  page.drawImage(embeddedImage, { x: 0, y: 0, width, height });
+
+  // 1. Name text
+  if (pos && name.trim()) {
+    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontSize = (pos.fontSizePct / 100) * height;
+    const textWidth = font.widthOfTextAtSize(name, fontSize);
+    let x = (pos.xPct / 100) * width;
+    // pdf-lib origin is bottom-left; convert from top-%
+    const y = height - (pos.yPct / 100) * height;
+    if (pos.align === 'center') x -= textWidth / 2;
+    else if (pos.align === 'right') x -= textWidth;
+    const [r, g, b] = hexToRgbNorm(pos.color);
+    page.drawText(name, { x, y, size: fontSize, font, color: rgb(r, g, b) });
+  }
+
+  // 2. QR code (only when rsvpToken is known)
+  if (qrPos && rsvpToken) {
+    const qrcode = (await import('qrcode')).default;
+    const qrUrl = `${window.location.origin}/rsvp/respond?token=${rsvpToken}`;
+    const dataUrl: string = await qrcode.toDataURL(qrUrl, {
+      width: 512, margin: 1, errorCorrectionLevel: 'H',
+      color: { dark: '#000000', light: '#FFFFFF' },
+    });
+    const base64 = dataUrl.split(',')[1];
+    const qrBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const qrImg = await pdfDoc.embedPng(qrBytes);
+    const qrSize = (qrPos.sizePct / 100) * height;
+    // centre of QR box
+    const qrX = (qrPos.xPct / 100) * width  - qrSize / 2;
+    const qrY = height - (qrPos.yPct / 100) * height - qrSize / 2;
+    page.drawImage(qrImg, { x: qrX, y: qrY, width: qrSize, height: qrSize });
+  }
+
+  // 3. Invisible clickable RSVP annotations over the 3-button strip
+  if (rsvpArea && rsvpToken) {
+    const base = window.location.origin;
+    const rsvpUrls = [
+      `${base}/api/rsvp?token=${rsvpToken}&response=ATTENDING`,
+      `${base}/api/rsvp?token=${rsvpToken}&response=MAYBE`,
+      `${base}/api/rsvp?token=${rsvpToken}&response=NOT_ATTENDING`,
+    ];
+    // Convert top-% coordinates to pdf-lib bottom-left origin
+    const ry1 = height * (1 - rsvpArea.y2Pct / 100); // bottom of strip in PDF coords
+    const ry2 = height * (1 - rsvpArea.y1Pct / 100); // top of strip in PDF coords
+    const btnW = width / 3;
+    const annotRefs = rsvpUrls.map((url, i) =>
+      pdfDoc.context.register(
+        pdfDoc.context.obj({
+          Type: PDFName.of('Annot'),
+          Subtype: PDFName.of('Link'),
+          Rect: [i * btnW, ry1, (i + 1) * btnW, ry2],
+          Border: [0, 0, 0],
+          A: { S: PDFName.of('URI'), URI: PDFString.of(url) },
+        }),
+      ),
+    );
+    page.node.set(PDFName.of('Annots'), pdfDoc.context.obj(annotRefs));
+  }
+
+  const out = await pdfDoc.save();
+  return { blob: new Blob([out as unknown as Uint8Array<ArrayBuffer>], { type: 'application/pdf' }), ext: 'pdf' };
 }
 
 async function generateHtmlInvite(
@@ -256,9 +328,6 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
   const [customName, setCustomName] = useState(customer.fullName);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
-  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
-  const cachedImgRef = useRef<{ id: string; img: HTMLImageElement } | null>(null);
-
   useEffect(() => {
     if (!open) return;
     setLoading(true);
@@ -271,39 +340,6 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
       })
       .finally(() => setLoading(false));
   }, [open, eventId]);
-
-  // Live canvas preview — re-renders whenever name, creative, or mode changes
-  useEffect(() => {
-    const canvas = previewCanvasRef.current;
-    if (!canvas || mode !== 'personal' || !selected?.isPersonalizable || !selected.namePosition) return;
-    if (!selected.mimeType.startsWith('image/')) return;
-
-    function draw(img: HTMLImageElement) {
-      if (!canvas || !selected?.namePosition) return;
-      const parent = canvas.parentElement;
-      const displayW = parent ? parent.clientWidth : 380;
-      const scale = displayW / img.naturalWidth;
-      canvas.width = displayW;
-      canvas.height = Math.round(img.naturalHeight * scale);
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const pos = selected.namePosition;
-      const fontSize = Math.max(6, (pos.fontSizePct / 100) * canvas.height);
-      ctx.font = `bold ${fontSize}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
-      ctx.fillStyle = pos.color;
-      ctx.textAlign = pos.align as CanvasTextAlign;
-      ctx.textBaseline = 'middle';
-      ctx.fillText(customName.trim() || customer.fullName, (pos.xPct / 100) * canvas.width, (pos.yPct / 100) * canvas.height);
-    }
-
-    if (cachedImgRef.current?.id === selected.id) {
-      draw(cachedImgRef.current.img);
-      return;
-    }
-    const img = new Image();
-    img.onload = () => { cachedImgRef.current = { id: selected.id, img }; draw(img); };
-    img.src = `/api/creatives/${selected.id}/file`;
-  }, [mode, selected, customName, customer.fullName]);
 
   function handleClose() {
     onClose(); setMode(null); setError('');
@@ -476,7 +512,9 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
                 >
                   <Sparkles size={22} className={`mx-auto mb-2 ${mode === 'personal' ? 'text-[#DB620A]' : 'text-[#94A3B8]'}`} />
                   <p className={`text-sm font-semibold ${mode === 'personal' ? 'text-[#DB620A]' : 'text-[#475569]'}`}>Personalised</p>
-                  <p className="text-xs text-[#94A3B8] mt-0.5">Add customer name</p>
+                  <p className="text-xs text-[#94A3B8] mt-0.5">
+                    {isPdf ? 'Name + RSVP links' : 'Name, QR & RSVP links'}
+                  </p>
                 </button>
               </div>
             )}
@@ -511,14 +549,14 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
                   />
                   <p className="text-xs text-[#94A3B8]">Pre-filled with customer name — edit if needed.</p>
                 </div>
-                {/* Live preview for image creatives */}
                 {selected.mimeType.startsWith('image/') && (
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold text-[#475569]">Preview</p>
-                    <canvas
-                      ref={previewCanvasRef}
-                      className="w-full rounded-lg border border-[#E2E8F0]"
-                    />
+                  <div className="p-2.5 rounded-lg bg-[#EFF6FF] border border-[#BFDBFE] text-xs text-[#1D4ED8] space-y-1">
+                    <p className="font-semibold">Generates a PDF with:</p>
+                    <ul className="list-disc list-inside space-y-0.5 text-[#3B82F6]">
+                      <li>Customer name placed at the marked position</li>
+                      <li>Unique QR code for <strong>{customer.fullName}</strong></li>
+                      <li>3 clickable RSVP buttons (Attending / Maybe / Not Going)</li>
+                    </ul>
                   </div>
                 )}
                 {selected.mimeType === 'application/pdf' && (

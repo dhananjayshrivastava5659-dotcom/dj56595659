@@ -59,6 +59,16 @@ export async function POST(req: NextRequest) {
   if (isPersonalizable && namePositionStr) {
     try { namePosition = JSON.parse(namePositionStr); } catch { /* ignore malformed */ }
   }
+  let qrPosition = undefined;
+  const qrPositionStr = formData.get('qrPosition') as string | null;
+  if (isPersonalizable && qrPositionStr) {
+    try { qrPosition = JSON.parse(qrPositionStr); } catch { /* ignore malformed */ }
+  }
+  let rsvpArea = undefined;
+  const rsvpAreaStr = formData.get('rsvpArea') as string | null;
+  if (isPersonalizable && rsvpAreaStr) {
+    try { rsvpArea = JSON.parse(rsvpAreaStr); } catch { /* ignore malformed */ }
+  }
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -74,6 +84,8 @@ export async function POST(req: NextRequest) {
     sizeBytes: file.size,
     isPersonalizable,
     namePosition: isPersonalizable ? namePosition : undefined,
+    qrPosition:   isPersonalizable ? qrPosition   : undefined,
+    rsvpArea:     isPersonalizable ? rsvpArea      : undefined,
     createdAt: new Date().toISOString(),
   };
 

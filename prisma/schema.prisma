@@ -109,6 +109,8 @@ model Creative {
   fileData         Bytes
   isPersonalizable Boolean  @default(false)
   namePosition     Json?
+  qrPosition       Json?
+  rsvpArea         Json?
   createdAt        DateTime @default(now())
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
