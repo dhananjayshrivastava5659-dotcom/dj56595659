@@ -77,4 +77,16 @@ export async function getSessionUser(): Promise<User | null> {
   }
 }
 
+export function getUserByEmployeeId(employeeId: string): User | null {
+  return DEMO_ACCOUNTS.find(a => a.employeeId === employeeId.trim())?.user ?? null;
+}
+
+export function getUserById(id: string): User | null {
+  return DEMO_ACCOUNTS.find(a => a.user.id === id)?.user ?? null;
+}
+
+export function getEmployeeIdForUserId(id: string): string | null {
+  return DEMO_ACCOUNTS.find(a => a.user.id === id)?.employeeId ?? null;
+}
+
 export { COOKIE_NAME };

@@ -36,6 +36,8 @@ export async function POST(req: NextRequest) {
     creatorId: user.id,
     creatorName: user.name,
     tags: body.tags ? body.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
+    approverIds: [],
+    approvers: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     customerCount: 0,

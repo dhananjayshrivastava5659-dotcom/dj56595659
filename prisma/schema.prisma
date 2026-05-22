@@ -66,6 +66,7 @@ model Event {
   creatorId     String
   creatorName   String
   tags          String[]
+  approverIds   String[]    @default([])
   customerCount Int         @default(0)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt

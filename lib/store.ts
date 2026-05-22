@@ -1,9 +1,11 @@
 import { prisma } from './db';
+import { getUserById, getEmployeeIdForUserId } from './auth';
 import type { Event, Customer, Notification, Creative } from '@/types';
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
 
 function mapEvent(e: any): Event {
+  const approverIds: string[] = e.approverIds ?? [];
   return {
     id: e.id,
     eventCode: e.eventCode,
@@ -22,6 +24,12 @@ function mapEvent(e: any): Event {
     creatorId: e.creatorId,
     creatorName: e.creatorName,
     tags: e.tags ?? [],
+    approverIds,
+    approvers: approverIds.map(uid => ({
+      id: uid,
+      name: getUserById(uid)?.name ?? uid,
+      employeeId: getEmployeeIdForUserId(uid) ?? uid,
+    })),
     customerCount: e.customerCount ?? 0,
     createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
     updatedAt: e.updatedAt instanceof Date ? e.updatedAt.toISOString() : e.updatedAt,
@@ -157,6 +165,7 @@ export async function getEventsForUser(userId: string, role: string): Promise<Ev
       OR: [
         { creatorId: userId },
         { subscriptions: { some: { userId } } },
+        { approverIds: { has: userId } },
       ],
     },
     orderBy: { createdAt: 'desc' },
@@ -179,6 +188,7 @@ export async function hasAccess(userId: string, role: string, eventId: string): 
   const event = await prisma.event.findUnique({ where: { id: eventId } });
   if (!event) return false;
   if (event.creatorId === userId) return true;
+  if ((event.approverIds as string[]).includes(userId)) return true;
   const sub = await prisma.subscription.findUnique({
     where: { userId_eventId: { userId, eventId } },
   });
@@ -381,4 +391,38 @@ export async function updateCustomerRsvp(
   } catch {
     return null;
   }
+}
+
+// ── Event Approvers ───────────────────────────────────────────────────────────
+
+export async function addEventApprover(eventId: string, userId: string): Promise<boolean> {
+  try {
+    const row = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { approverIds: true },
+    });
+    if (!row) return false;
+    const ids = row.approverIds as string[];
+    if (ids.includes(userId)) return true;
+    await prisma.event.update({
+      where: { id: eventId },
+      data: { approverIds: { push: userId } },
+    });
+    return true;
+  } catch { return false; }
+}
+
+export async function removeEventApprover(eventId: string, userId: string): Promise<boolean> {
+  try {
+    const row = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { approverIds: true },
+    });
+    if (!row) return false;
+    await prisma.event.update({
+      where: { id: eventId },
+      data: { approverIds: (row.approverIds as string[]).filter(id => id !== userId) },
+    });
+    return true;
+  } catch { return false; }
 }

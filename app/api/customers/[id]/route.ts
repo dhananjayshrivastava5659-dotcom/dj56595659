@@ -40,7 +40,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   // ── Approve / Reject ─────────────────────────────────────────────────────────
-  if (!isAdmin && !isCreator) {
+  const isApprover = (event.approverIds ?? []).includes(user.id);
+  if (!isAdmin && !isCreator && !isApprover) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

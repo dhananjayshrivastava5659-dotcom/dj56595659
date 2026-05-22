@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Calendar, Copy, Check, Users, Plus, Loader2,
   CheckCircle2, XCircle, Clock, Share2, Sparkles, Download, Palette, FileText, ImageIcon,
+  ShieldCheck, ChevronDown, ChevronUp, UserPlus, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -539,6 +540,121 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
   );
 }
 
+// ── Manage Approvers ──────────────────────────────────────────────────────────
+
+function ManageApproversSection({ event, onUpdated }: {
+  event: Event;
+  onUpdated: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [empId, setEmpId] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!empId.trim()) return;
+    setAdding(true); setError(''); setSuccess('');
+    try {
+      const res = await fetch(`/api/events/${event.id}/approvers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: empId.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Failed to add approver.'); return; }
+      setSuccess(`${data.approver.name} now has approval access.`);
+      setEmpId('');
+      onUpdated();
+    } catch { setError('Something went wrong.'); } finally { setAdding(false); }
+  }
+
+  async function handleRemove(userId: string) {
+    setRemovingId(userId); setError(''); setSuccess('');
+    try {
+      const res = await fetch(`/api/events/${event.id}/approvers?userId=${encodeURIComponent(userId)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed to remove.'); return; }
+      onUpdated();
+    } catch { setError('Something went wrong.'); } finally { setRemovingId(null); }
+  }
+
+  return (
+    <Card className="border-[#E2E8F0]">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-[#F8FAFC] transition-colors rounded-xl"
+        onClick={() => { setOpen(v => !v); setError(''); setSuccess(''); }}
+      >
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={15} className="text-[#DB620A]" />
+          <span className="text-sm font-semibold text-[#0F172A]">Manage Approval Access</span>
+          {event.approvers.length > 0 && (
+            <span className="text-[10px] bg-[#FEF0E7] text-[#DB620A] font-bold px-1.5 py-0.5 rounded-full">
+              {event.approvers.length}
+            </span>
+          )}
+        </div>
+        {open ? <ChevronUp size={15} className="text-[#94A3B8]" /> : <ChevronDown size={15} className="text-[#94A3B8]" />}
+      </button>
+
+      {open && (
+        <CardContent className="pt-0 pb-4 px-5 space-y-4">
+          <p className="text-xs text-[#64748B]">
+            Give other users the ability to approve or reject customers for this event. Enter their Employee ID to add them.
+          </p>
+
+          {/* Current approvers */}
+          {event.approvers.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold text-[#475569] uppercase tracking-wide">Current Approvers</p>
+              {event.approvers.map(a => (
+                <div key={a.id} className="flex items-center justify-between p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                  <div>
+                    <p className="text-sm font-semibold text-[#0F172A]">{a.name}</p>
+                    <p className="text-[11px] text-[#94A3B8]">Emp ID: {a.employeeId}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={removingId === a.id}
+                    onClick={() => handleRemove(a.id)}
+                    className="text-[#DC2626] hover:text-[#B91C1C] disabled:opacity-50 p-1.5 rounded-lg hover:bg-[#FEF2F2] transition-colors"
+                    title="Remove access"
+                  >
+                    {removingId === a.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-[#94A3B8] italic">No delegated approvers yet.</p>
+          )}
+
+          {/* Add form */}
+          <form onSubmit={handleAdd} className="flex gap-2">
+            <Input
+              value={empId}
+              onChange={e => setEmpId(e.target.value.replace(/\D/g, ''))}
+              placeholder="Employee ID (e.g. 108168)"
+              className="flex-1 text-sm"
+              maxLength={10}
+            />
+            <Button type="submit" size="sm" loading={adding} className="shrink-0">
+              <UserPlus size={14} /> Add
+            </Button>
+          </form>
+
+          {error && <p className="text-xs text-[#DC2626] bg-[#FEF2F2] border border-[#FCA5A5] rounded-lg px-3 py-2">{error}</p>}
+          {success && <p className="text-xs text-[#15803D] bg-[#DCFCE7] border border-[#86EFAC] rounded-lg px-3 py-2">{success}</p>}
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 function CustomerRow({ customer, onShare, canUpdateRsvp, onRsvpUpdate }: {
   customer: Customer;
   onShare?: () => void;
@@ -726,6 +842,8 @@ export function EventDetailClient({ user, eventId }: Props) {
   useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
 
   const isCreatorOrAdmin = event ? (user.role === 'ADMIN' || event.creatorId === user.id) : false;
+  const isApprover       = event ? (event.approverIds ?? []).includes(user.id) : false;
+  const hasApprovalAccess = isCreatorOrAdmin || isApprover;
   const canEdit = isCreatorOrAdmin;
 
   const pending  = customers.filter(c => c.status === 'PENDING');
@@ -784,7 +902,7 @@ export function EventDetailClient({ user, eventId }: Props) {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="customers">
             Customers
-            {isCreatorOrAdmin && pending.length > 0 && (
+            {hasApprovalAccess && pending.length > 0 && (
               <span className="ml-1.5 bg-[#DB620A] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                 {pending.length}
               </span>
@@ -836,8 +954,21 @@ export function EventDetailClient({ user, eventId }: Props) {
         </TabsContent>
 
         <TabsContent value="customers" className="mt-4 space-y-4">
-          {isCreatorOrAdmin ? (
+          {hasApprovalAccess ? (
             <>
+              {/* Manage approvers — creator/admin only */}
+              {isCreatorOrAdmin && (
+                <ManageApproversSection event={event} onUpdated={fetchEvent} />
+              )}
+
+              {/* Delegated approver notice */}
+              {isApprover && !isCreatorOrAdmin && (
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] text-xs text-[#1D4ED8]">
+                  <ShieldCheck size={14} className="shrink-0" />
+                  <span>You have been granted approval access for this event by the creator.</span>
+                </div>
+              )}
+
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="text-sm flex items-center gap-2">

@@ -30,6 +30,8 @@ export interface Event {
   creatorId: string;
   creatorName: string;
   tags?: string[];
+  approverIds: string[];
+  approvers: { id: string; name: string; employeeId: string }[];
   createdAt: string;
   updatedAt: string;
   customerCount?: number;
