@@ -23,10 +23,10 @@ function FileIcon({ mimeType, className }: { mimeType: string; className?: strin
   return <ImageIcon className={className} />;
 }
 
-const DEFAULT_NAME_POSITION: NamePosition = { xPct: 50, yPct: 23, fontSizePct: 4, color: '#ffffff', align: 'center' };
-const DEFAULT_QR_POSITION: QrPosition = { xPct: 84, yPct: 84, sizePct: 10 };
-const DEFAULT_RSVP_AREA: RsvpArea = { y1Pct: 82, y2Pct: 96 };
-const DEFAULT_MAP_LINK_AREA: MapLinkArea = { xPct: 73, yPct: 78, wPct: 16, hPct: 7 };
+const DEFAULT_NAME_POSITION: NamePosition = { xPct: 34, yPct: 74, fontSizePct: 4, color: '#ffffff', align: 'center' };
+const DEFAULT_QR_POSITION: QrPosition = { xPct: 78, yPct: 85, sizePct: 13 };
+const DEFAULT_RSVP_AREA: RsvpArea = { y1Pct: 90, y2Pct: 98 };
+const DEFAULT_MAP_LINK_AREA: MapLinkArea = { xPct: 78, yPct: 72, wPct: 19, hPct: 5 };
 
 type ClickMode = 'name' | 'qr' | 'mapLink';
 
