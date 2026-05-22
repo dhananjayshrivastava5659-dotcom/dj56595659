@@ -32,6 +32,8 @@ export interface Event {
   tags?: string[];
   approverIds: string[];
   approvers: { id: string; name: string; employeeId: string }[];
+  attendanceDelegateIds: string[];
+  attendanceDelegates: { id: string; name: string; employeeId: string }[];
   createdAt: string;
   updatedAt: string;
   customerCount?: number;
@@ -39,6 +41,7 @@ export interface Event {
 
 export type CustomerStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type RsvpStatus = 'NO_RESPONSE' | 'ATTENDING' | 'MAYBE' | 'NOT_ATTENDING';
+export type AttendanceStatus = 'NOT_MARKED' | 'PRESENT' | 'ABSENT';
 
 export interface Customer {
   id: string;
@@ -55,6 +58,7 @@ export interface Customer {
   reviewedAt?: string;
   rsvpStatus: RsvpStatus;
   rsvpToken: string;
+  attendanceStatus: AttendanceStatus;
   createdAt: string;
 }
 

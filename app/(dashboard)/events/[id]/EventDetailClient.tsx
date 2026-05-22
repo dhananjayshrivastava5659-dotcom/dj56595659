@@ -6,6 +6,7 @@ import {
   ArrowLeft, Calendar, Copy, Check, Users, Plus, Loader2,
   CheckCircle2, XCircle, Clock, Share2, Sparkles, Download, Palette, FileText, ImageIcon,
   ShieldCheck, ChevronDown, ChevronUp, UserPlus, Trash2, BarChart2,
+  ClipboardCheck, UserCheck, AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatDate, STATUS_COLORS, STATUS_LABELS, getInitials } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import type { User, Event, Customer, CustomerStatus, Creative, RsvpStatus, InviteShare } from '@/types';
+import type { User, Event, Customer, CustomerStatus, Creative, RsvpStatus, InviteShare, AttendanceStatus } from '@/types';
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   OPEN_EVENT: 'Open Event', INVITATION_ONLY: 'By Invitation',
@@ -41,6 +42,18 @@ const RSVP_CHIP: Record<RsvpStatus, { label: string; className: string }> = {
   MAYBE:         { label: '? Maybe',       className: 'bg-[#FEF9C3] text-[#A16207]' },
   NOT_ATTENDING: { label: '✗ Not Going',   className: 'bg-[#FEE2E2] text-[#DC2626]' },
 };
+
+const ATTENDANCE_CHIP: Record<AttendanceStatus, { label: string; className: string }> = {
+  NOT_MARKED: { label: 'Not Marked', className: 'bg-[#F1F5F9] text-[#64748B]' },
+  PRESENT:    { label: '✓ Present',  className: 'bg-[#DCFCE7] text-[#15803D]' },
+  ABSENT:     { label: '✗ Absent',   className: 'bg-[#FEE2E2] text-[#DC2626]' },
+};
+
+/** Returns today's date as YYYY-MM-DD in local time */
+function localDateStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 function hexToRgbNorm(hex: string): [number, number, number] {
   const c = hex.replace('#', '');
@@ -713,6 +726,361 @@ function ManageApproversSection({ event, onUpdated }: {
   );
 }
 
+// ── Manage Attendance Delegates ───────────────────────────────────────────────
+
+function ManageAttendanceDelegatesSection({ event, onUpdated }: { event: Event; onUpdated: () => void }) {
+  const [open, setOpen]           = useState(false);
+  const [empId, setEmpId]         = useState('');
+  const [adding, setAdding]       = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [error, setError]         = useState('');
+  const [success, setSuccess]     = useState('');
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!empId.trim()) return;
+    setAdding(true); setError(''); setSuccess('');
+    try {
+      const res = await fetch(`/api/events/${event.id}/attendance-delegates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: empId.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Failed to add.'); return; }
+      setSuccess(`${data.delegate.name} can now mark attendance.`);
+      setEmpId('');
+      onUpdated();
+    } catch { setError('Something went wrong.'); } finally { setAdding(false); }
+  }
+
+  async function handleRemove(userId: string) {
+    setRemovingId(userId); setError(''); setSuccess('');
+    try {
+      const res = await fetch(
+        `/api/events/${event.id}/attendance-delegates?userId=${encodeURIComponent(userId)}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed to remove.'); return; }
+      onUpdated();
+    } catch { setError('Something went wrong.'); } finally { setRemovingId(null); }
+  }
+
+  return (
+    <Card className="border-[#E2E8F0]">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-[#F8FAFC] transition-colors rounded-xl"
+        onClick={() => { setOpen(v => !v); setError(''); setSuccess(''); }}
+      >
+        <div className="flex items-center gap-2">
+          <UserCheck size={15} className="text-[#DB620A]" />
+          <span className="text-sm font-semibold text-[#0F172A]">Manage Attendance Access</span>
+          {event.attendanceDelegates.length > 0 && (
+            <span className="text-[10px] bg-[#FEF0E7] text-[#DB620A] font-bold px-1.5 py-0.5 rounded-full">
+              {event.attendanceDelegates.length}
+            </span>
+          )}
+        </div>
+        {open ? <ChevronUp size={15} className="text-[#94A3B8]" /> : <ChevronDown size={15} className="text-[#94A3B8]" />}
+      </button>
+
+      {open && (
+        <CardContent className="pt-0 pb-4 px-5 space-y-4">
+          <p className="text-xs text-[#64748B]">
+            Give team members the ability to mark customer attendance on the event day. Enter their Employee ID to add them.
+          </p>
+
+          {event.attendanceDelegates.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold text-[#475569] uppercase tracking-wide">Current Delegates</p>
+              {event.attendanceDelegates.map(a => (
+                <div key={a.id} className="flex items-center justify-between p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                  <div>
+                    <p className="text-sm font-semibold text-[#0F172A]">{a.name}</p>
+                    <p className="text-[11px] text-[#94A3B8]">Emp ID: {a.employeeId}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={removingId === a.id}
+                    onClick={() => handleRemove(a.id)}
+                    className="text-[#DC2626] hover:text-[#B91C1C] disabled:opacity-50 p-1.5 rounded-lg hover:bg-[#FEF2F2] transition-colors"
+                  >
+                    {removingId === a.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-[#94A3B8] italic">No attendance delegates yet.</p>
+          )}
+
+          <form onSubmit={handleAdd} className="flex gap-2">
+            <Input
+              value={empId}
+              onChange={e => setEmpId(e.target.value.replace(/\D/g, ''))}
+              placeholder="Employee ID (e.g. 108168)"
+              className="flex-1 text-sm"
+              maxLength={10}
+            />
+            <Button type="submit" size="sm" loading={adding} className="shrink-0">
+              <UserPlus size={14} /> Add
+            </Button>
+          </form>
+
+          {error   && <p className="text-xs text-[#DC2626] bg-[#FEF2F2] border border-[#FCA5A5] rounded-lg px-3 py-2">{error}</p>}
+          {success && <p className="text-xs text-[#15803D] bg-[#DCFCE7] border border-[#86EFAC] rounded-lg px-3 py-2">{success}</p>}
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
+// ── Attendance Row ─────────────────────────────────────────────────────────────
+
+function AttendanceRow({ customer, canMark, onUpdate }: {
+  customer: Customer;
+  canMark: boolean;
+  onUpdate: () => void;
+}) {
+  const [loading, setLoading] = useState<AttendanceStatus | null>(null);
+  const current = customer.attendanceStatus ?? 'NOT_MARKED';
+
+  async function mark(status: AttendanceStatus) {
+    if (loading) return;
+    setLoading(status);
+    try {
+      await fetch(`/api/customers/${customer.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'UPDATE_ATTENDANCE', attendanceStatus: status }),
+      });
+      onUpdate();
+    } finally { setLoading(null); }
+  }
+
+  const chip = ATTENDANCE_CHIP[current];
+
+  return (
+    <div className="flex items-center gap-3 p-4 border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] transition-colors">
+      <Avatar size="sm">
+        <AvatarFallback className="text-[10px]">{getInitials(customer.fullName)}</AvatarFallback>
+      </Avatar>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-sm text-[#0F172A]">{customer.fullName}</p>
+        <div className="flex flex-wrap gap-2 mt-0.5 text-xs text-[#94A3B8]">
+          <span>{customer.mobile}</span>
+          {customer.organisation && <span>{customer.organisation}</span>}
+          {customer.rsvpStatus !== 'NO_RESPONSE' && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${RSVP_CHIP[customer.rsvpStatus].className}`}>
+              {RSVP_CHIP[customer.rsvpStatus].label}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Attendance status chip */}
+      <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${chip.className}`}>
+        {chip.label}
+      </span>
+
+      {/* Mark buttons — only when canMark */}
+      {canMark && (
+        <div className="flex gap-1.5 shrink-0">
+          <button
+            onClick={() => mark(current === 'PRESENT' ? 'NOT_MARKED' : 'PRESENT')}
+            disabled={!!loading}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border-2 transition-all disabled:opacity-50 ${
+              current === 'PRESENT'
+                ? 'bg-[#DCFCE7] border-[#86EFAC] text-[#15803D]'
+                : 'bg-white border-[#E2E8F0] text-[#475569] hover:border-[#86EFAC] hover:text-[#15803D]'
+            }`}
+          >
+            {loading === 'PRESENT' ? <Loader2 size={12} className="animate-spin inline" /> : '✓ Present'}
+          </button>
+          <button
+            onClick={() => mark(current === 'ABSENT' ? 'NOT_MARKED' : 'ABSENT')}
+            disabled={!!loading}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border-2 transition-all disabled:opacity-50 ${
+              current === 'ABSENT'
+                ? 'bg-[#FEF2F2] border-[#FCA5A5] text-[#DC2626]'
+                : 'bg-white border-[#E2E8F0] text-[#475569] hover:border-[#FCA5A5] hover:text-[#DC2626]'
+            }`}
+          >
+            {loading === 'ABSENT' ? <Loader2 size={12} className="animate-spin inline" /> : '✗ Absent'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Attendance Tab ─────────────────────────────────────────────────────────────
+
+function AttendanceTab({
+  event,
+  approved,
+  isCreatorOrAdmin,
+  isAttendanceDelegate,
+  onEventUpdated,
+  onCustomersUpdated,
+}: {
+  event: Event;
+  approved: Customer[];
+  isCreatorOrAdmin: boolean;
+  isAttendanceDelegate: boolean;
+  onEventUpdated: () => void;
+  onCustomersUpdated: () => void;
+}) {
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  const today       = localDateStr();
+  const isEventDay  = event.date === today;
+  const isFuture    = event.date > today;
+  const canMark     = isEventDay && (isCreatorOrAdmin || isAttendanceDelegate);
+
+  const presentCount   = approved.filter(c => c.attendanceStatus === 'PRESENT').length;
+  const absentCount    = approved.filter(c => c.attendanceStatus === 'ABSENT').length;
+  const notMarkedCount = approved.filter(c => c.attendanceStatus === 'NOT_MARKED').length;
+
+  async function bulkMark(status: 'PRESENT' | 'ABSENT') {
+    setBulkLoading(true);
+    try {
+      await Promise.all(
+        approved
+          .filter(c => c.attendanceStatus !== status)
+          .map(c =>
+            fetch(`/api/customers/${c.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'UPDATE_ATTENDANCE', attendanceStatus: status }),
+            }),
+          ),
+      );
+      onCustomersUpdated();
+    } finally { setBulkLoading(false); }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Date context banner */}
+      {isFuture && (
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] text-[#1D4ED8]">
+          <AlertCircle size={16} className="shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold">Attendance opens on the event day</p>
+            <p className="text-xs mt-0.5 opacity-80">
+              You can mark attendance on <strong>{event.date}</strong>. Come back on the day of the event.
+            </p>
+          </div>
+        </div>
+      )}
+      {!isFuture && !isEventDay && (
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-[#F1F5F9] border border-[#E2E8F0] text-[#475569]">
+          <ClipboardCheck size={16} className="shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold">Event has passed — attendance is read-only</p>
+            <p className="text-xs mt-0.5 opacity-80">
+              Attendance was open on <strong>{event.date}</strong>. The recorded results are shown below.
+            </p>
+          </div>
+        </div>
+      )}
+      {isEventDay && (
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-[#DCFCE7] border border-[#86EFAC] text-[#15803D]">
+          <ClipboardCheck size={16} className="shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold">Today is the event day — attendance marking is open!</p>
+            <p className="text-xs mt-0.5 opacity-80">Mark each customer as Present or Absent below.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Manage attendance delegates — creator/admin only */}
+      {isCreatorOrAdmin && (
+        <ManageAttendanceDelegatesSection event={event} onUpdated={onEventUpdated} />
+      )}
+
+      {/* Delegate notice for non-creator delegates */}
+      {isAttendanceDelegate && !isCreatorOrAdmin && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] text-xs text-[#1D4ED8]">
+          <UserCheck size={14} className="shrink-0" />
+          <span>You have been granted attendance access for this event by the creator.</span>
+        </div>
+      )}
+
+      {/* Summary chips */}
+      {approved.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-xl border bg-[#DCFCE7] border-[#86EFAC] p-3 text-center">
+            <p className="text-2xl font-black text-[#15803D] leading-none">{presentCount}</p>
+            <p className="text-[11px] font-semibold text-[#15803D] mt-1">Present</p>
+          </div>
+          <div className="rounded-xl border bg-[#FEF2F2] border-[#FCA5A5] p-3 text-center">
+            <p className="text-2xl font-black text-[#DC2626] leading-none">{absentCount}</p>
+            <p className="text-[11px] font-semibold text-[#DC2626] mt-1">Absent</p>
+          </div>
+          <div className="rounded-xl border bg-[#F1F5F9] border-[#E2E8F0] p-3 text-center">
+            <p className="text-2xl font-black text-[#64748B] leading-none">{notMarkedCount}</p>
+            <p className="text-[11px] font-semibold text-[#64748B] mt-1">Not Marked</p>
+          </div>
+        </div>
+      )}
+
+      {/* Customer attendance list */}
+      <Card className="border-[#E2E8F0]">
+        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <ClipboardCheck size={15} className="text-[#DB620A]" />
+            Attendance ({approved.length} approved customer{approved.length !== 1 ? 's' : ''})
+          </CardTitle>
+
+          {/* Bulk actions — only on event day */}
+          {canMark && approved.length > 0 && (
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                loading={bulkLoading}
+                onClick={() => bulkMark('PRESENT')}
+                className="text-xs border-[#86EFAC] text-[#15803D] hover:bg-[#DCFCE7]"
+              >
+                <CheckCircle2 size={13} /> Mark All Present
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                loading={bulkLoading}
+                onClick={() => bulkMark('ABSENT')}
+                className="text-xs border-[#FCA5A5] text-[#DC2626] hover:bg-[#FEF2F2]"
+              >
+                <XCircle size={13} /> Mark All Absent
+              </Button>
+            </div>
+          )}
+        </CardHeader>
+
+        <CardContent className="p-0">
+          {approved.length === 0 ? (
+            <p className="text-center text-sm text-[#94A3B8] py-10">
+              No approved customers yet.
+            </p>
+          ) : (
+            approved.map(c => (
+              <AttendanceRow
+                key={c.id}
+                customer={c}
+                canMark={canMark}
+                onUpdate={onCustomersUpdated}
+              />
+            ))
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ── Reports Tab ───────────────────────────────────────────────────────────────
 
 function ReportsTab({ eventId, event }: { eventId: string; event: Event }) {
@@ -761,15 +1129,21 @@ function ReportsTab({ eventId, event }: { eventId: string; event: Event }) {
         [''],
         ['INVITATIONS SHARED', ''],
         ['Total Invitations Shared', inviteShares.length],
+        [''],
+        ['POST EVENT ATTENDANCE', ''],
+        ['Attended (Present)', customers.filter(c => c.attendanceStatus === 'PRESENT').length],
+        ['Absent', customers.filter(c => c.attendanceStatus === 'ABSENT').length],
+        ['Not Marked', customers.filter(c => c.attendanceStatus === 'NOT_MARKED').length],
       ];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'Summary');
 
       // Sheet 2: Customers
       const customerRows: (string | number)[][] = [
-        ['Full Name', 'Mobile', 'Email', 'Organisation', 'Guests Accompanied', 'Approval Status', 'RSVP Status', 'Added By', 'Added At', 'Review Note'],
+        ['Full Name', 'Mobile', 'Email', 'Organisation', 'Guests Accompanied', 'Approval Status', 'RSVP Status', 'Attendance', 'Added By', 'Added At', 'Review Note'],
         ...customers.map(c => [
           c.fullName, c.mobile, c.email || '', c.organisation || '',
           c.guestsAccompanied ?? 0, c.status, c.rsvpStatus,
+          c.attendanceStatus ?? 'NOT_MARKED',
           c.addedByName, new Date(c.createdAt).toLocaleString('en-IN'),
           c.reviewNote || '',
         ]),
@@ -921,28 +1295,45 @@ function ReportsTab({ eventId, event }: { eventId: string; event: Event }) {
         </CardContent>
       </Card>
 
-      {/* Post Event Status — Coming Soon */}
-      <Card className="border-dashed border-2 border-[#E2E8F0]">
-        <CardContent className="py-8 text-center">
-          <span className="inline-flex items-center gap-1.5 bg-[#F1F5F9] rounded-full px-3 py-1 text-[10px] font-bold text-[#64748B] uppercase tracking-wide mb-3">
-            <Clock size={10} /> Coming Soon
-          </span>
-          <p className="font-semibold text-[#475569]">Post Event Status</p>
-          <p className="text-xs text-[#94A3B8] mt-1 max-w-xs mx-auto">
-            Track how many approved customers actually attended vs didn't show up after the event concludes.
-          </p>
-          <div className="grid grid-cols-2 gap-3 mt-5 max-w-[200px] mx-auto opacity-30 pointer-events-none select-none">
-            <div className="bg-[#DCFCE7] border border-[#86EFAC] rounded-xl p-3 text-center">
-              <p className="text-2xl font-black text-[#15803D]">—</p>
-              <p className="text-[10px] font-semibold text-[#15803D] mt-0.5">Attended</p>
-            </div>
-            <div className="bg-[#FEF2F2] border border-[#FCA5A5] rounded-xl p-3 text-center">
-              <p className="text-2xl font-black text-[#DC2626]">—</p>
-              <p className="text-[10px] font-semibold text-[#DC2626] mt-0.5">No Show</p>
-            </div>
+      {/* Post Event Status — live attendance data */}
+      {(() => {
+        const present   = customers.filter(c => c.attendanceStatus === 'PRESENT').length;
+        const absent    = customers.filter(c => c.attendanceStatus === 'ABSENT').length;
+        const notMarked = customers.filter(c => c.attendanceStatus === 'NOT_MARKED').length;
+        const hasData   = present > 0 || absent > 0;
+        return (
+          <div>
+            <p className="text-[11px] font-semibold text-[#475569] uppercase tracking-widest mb-1">
+              Post Event Status
+            </p>
+            <p className="text-xs text-[#94A3B8] mb-3">
+              Attendance marked via the Attendance tab on the event day
+            </p>
+            {hasData ? (
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'Attended',   value: present,   bg: 'bg-[#DCFCE7] border-[#86EFAC]',  txt: 'text-[#15803D]' },
+                  { label: 'Absent',     value: absent,    bg: 'bg-[#FEF2F2] border-[#FCA5A5]',  txt: 'text-[#DC2626]' },
+                  { label: 'Not Marked', value: notMarked, bg: 'bg-[#F1F5F9] border-[#E2E8F0]',  txt: 'text-[#64748B]' },
+                ].map(s => (
+                  <div key={s.label} className={`rounded-xl border p-4 ${s.bg}`}>
+                    <p className={`text-3xl font-black leading-none ${s.txt}`}>{s.value}</p>
+                    <p className={`text-xs font-semibold mt-2 ${s.txt} opacity-80`}>{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border-2 border-dashed border-[#E2E8F0] p-6 text-center">
+                <ClipboardCheck size={28} className="text-[#E2E8F0] mx-auto mb-2" />
+                <p className="text-sm font-semibold text-[#475569]">No attendance recorded yet</p>
+                <p className="text-xs text-[#94A3B8] mt-1">
+                  Attendance is marked on the event day via the Attendance tab.
+                </p>
+              </div>
+            )}
           </div>
-        </CardContent>
-      </Card>
+        );
+      })()}
     </div>
   );
 }
@@ -1135,9 +1526,11 @@ export function EventDetailClient({ user, eventId }: Props) {
   useEffect(() => { fetchEvent(); }, [fetchEvent]);
   useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
 
-  const isCreatorOrAdmin = event ? (user.role === 'ADMIN' || event.creatorId === user.id) : false;
-  const isApprover       = event ? (event.approverIds ?? []).includes(user.id) : false;
-  const hasApprovalAccess = isCreatorOrAdmin || isApprover;
+  const isCreatorOrAdmin     = event ? (user.role === 'ADMIN' || event.creatorId === user.id) : false;
+  const isApprover           = event ? (event.approverIds ?? []).includes(user.id) : false;
+  const isAttendanceDelegate = event ? (event.attendanceDelegateIds ?? []).includes(user.id) : false;
+  const hasApprovalAccess    = isCreatorOrAdmin || isApprover;
+  const hasAttendanceAccess  = isCreatorOrAdmin || isAttendanceDelegate;
   const canEdit = isCreatorOrAdmin;
 
   const pending  = customers.filter(c => c.status === 'PENDING');
@@ -1202,6 +1595,11 @@ export function EventDetailClient({ user, eventId }: Props) {
               </span>
             )}
           </TabsTrigger>
+          {hasAttendanceAccess && (
+            <TabsTrigger value="attendance" className="flex items-center gap-1.5">
+              <ClipboardCheck size={13} /> Attendance
+            </TabsTrigger>
+          )}
           {isCreatorOrAdmin && (
             <TabsTrigger value="reports" className="flex items-center gap-1.5">
               <BarChart2 size={13} /> Reports
@@ -1356,6 +1754,19 @@ export function EventDetailClient({ user, eventId }: Props) {
             </Card>
           )}
         </TabsContent>
+
+        {hasAttendanceAccess && (
+          <TabsContent value="attendance" className="mt-4">
+            <AttendanceTab
+              event={event}
+              approved={approved}
+              isCreatorOrAdmin={isCreatorOrAdmin}
+              isAttendanceDelegate={isAttendanceDelegate}
+              onEventUpdated={fetchEvent}
+              onCustomersUpdated={fetchCustomers}
+            />
+          </TabsContent>
+        )}
 
         {isCreatorOrAdmin && (
           <TabsContent value="reports" className="mt-4">

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth';
-import { getCustomerById, updateCustomerStatus, updateCustomerRsvp, getEventById, addNotification } from '@/lib/store';
-import type { RsvpStatus } from '@/types';
+import { getCustomerById, updateCustomerStatus, updateCustomerRsvp, updateCustomerAttendance, getEventById, addNotification } from '@/lib/store';
+import type { RsvpStatus, AttendanceStatus } from '@/types';
 
-const VALID_RSVP: RsvpStatus[] = ['NO_RESPONSE', 'ATTENDING', 'MAYBE', 'NOT_ATTENDING'];
+const VALID_RSVP: RsvpStatus[]               = ['NO_RESPONSE', 'ATTENDING', 'MAYBE', 'NOT_ATTENDING'];
+const VALID_ATTENDANCE: AttendanceStatus[]   = ['NOT_MARKED', 'PRESENT', 'ABSENT'];
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser();
@@ -21,7 +22,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const isAdder   = customer.addedById === user.id;
 
   const body = await req.json();
-  const { action, reviewNote, rsvpStatus } = body;
+  const { action, reviewNote, rsvpStatus, attendanceStatus } = body;
+
+  // ── Attendance update ────────────────────────────────────────────────────────
+  if (action === 'UPDATE_ATTENDANCE') {
+    const isAttendanceDelegate = (event.attendanceDelegateIds ?? []).includes(user.id);
+    if (!isAdmin && !isCreator && !isAttendanceDelegate) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (customer.status !== 'APPROVED') {
+      return NextResponse.json({ error: 'Attendance can only be marked for approved customers.' }, { status: 400 });
+    }
+    if (!VALID_ATTENDANCE.includes(attendanceStatus)) {
+      return NextResponse.json({ error: 'Invalid attendanceStatus.' }, { status: 400 });
+    }
+    const updated = await updateCustomerAttendance(id, attendanceStatus);
+    return NextResponse.json({ customer: updated });
+  }
 
   // ── Manual RSVP update ───────────────────────────────────────────────────────
   if (action === 'UPDATE_RSVP') {
@@ -46,7 +63,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (action !== 'APPROVE' && action !== 'REJECT') {
-    return NextResponse.json({ error: 'action must be APPROVE, REJECT, or UPDATE_RSVP' }, { status: 400 });
+    return NextResponse.json({ error: 'action must be APPROVE, REJECT, UPDATE_RSVP, or UPDATE_ATTENDANCE' }, { status: 400 });
   }
 
   const status = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';

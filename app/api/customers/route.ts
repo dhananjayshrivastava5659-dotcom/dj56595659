@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
     status: 'PENDING',
     rsvpStatus: 'NO_RESPONSE',
     rsvpToken: '',          // DB auto-generates via gen_random_uuid()
+    attendanceStatus: 'NOT_MARKED',
     createdAt: new Date().toISOString(),
   };
 

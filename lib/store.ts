@@ -1,11 +1,12 @@
 import { prisma } from './db';
 import { getUserById, getEmployeeIdForUserId } from './auth';
-import type { Event, Customer, Notification, Creative, InviteShare } from '@/types';
+import type { Event, Customer, Notification, Creative, InviteShare, AttendanceStatus } from '@/types';
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
 
 function mapEvent(e: any): Event {
-  const approverIds: string[] = e.approverIds ?? [];
+  const approverIds: string[]           = e.approverIds ?? [];
+  const attendanceDelegateIds: string[] = e.attendanceDelegateIds ?? [];
   return {
     id: e.id,
     eventCode: e.eventCode,
@@ -26,6 +27,12 @@ function mapEvent(e: any): Event {
     tags: e.tags ?? [],
     approverIds,
     approvers: approverIds.map(uid => ({
+      id: uid,
+      name: getUserById(uid)?.name ?? uid,
+      employeeId: getEmployeeIdForUserId(uid) ?? uid,
+    })),
+    attendanceDelegateIds,
+    attendanceDelegates: attendanceDelegateIds.map(uid => ({
       id: uid,
       name: getUserById(uid)?.name ?? uid,
       employeeId: getEmployeeIdForUserId(uid) ?? uid,
@@ -52,6 +59,7 @@ function mapCustomer(c: any): Customer {
     reviewedAt: c.reviewedAt instanceof Date ? c.reviewedAt.toISOString() : (c.reviewedAt ?? undefined),
     rsvpStatus: c.rsvpStatus ?? 'NO_RESPONSE',
     rsvpToken: c.rsvpToken ?? '',
+    attendanceStatus: c.attendanceStatus ?? 'NOT_MARKED',
     createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : c.createdAt,
   };
 }
@@ -115,6 +123,7 @@ export async function addEvent(event: Event): Promise<void> {
       creatorId: event.creatorId,
       creatorName: event.creatorName,
       tags: event.tags ?? [],
+      attendanceDelegateIds: [],
       customerCount: event.customerCount ?? 0,
     },
   });
@@ -470,4 +479,55 @@ export async function removeEventApprover(eventId: string, userId: string): Prom
     });
     return true;
   } catch { return false; }
+}
+
+// ── Attendance Delegates ──────────────────────────────────────────────────────
+
+export async function addAttendanceDelegate(eventId: string, userId: string): Promise<boolean> {
+  try {
+    const row = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { attendanceDelegateIds: true },
+    });
+    if (!row) return false;
+    const ids = row.attendanceDelegateIds as string[];
+    if (ids.includes(userId)) return true;
+    await prisma.event.update({
+      where: { id: eventId },
+      data: { attendanceDelegateIds: { push: userId } },
+    });
+    return true;
+  } catch { return false; }
+}
+
+export async function removeAttendanceDelegate(eventId: string, userId: string): Promise<boolean> {
+  try {
+    const row = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { attendanceDelegateIds: true },
+    });
+    if (!row) return false;
+    await prisma.event.update({
+      where: { id: eventId },
+      data: {
+        attendanceDelegateIds: (row.attendanceDelegateIds as string[]).filter(id => id !== userId),
+      },
+    });
+    return true;
+  } catch { return false; }
+}
+
+export async function updateCustomerAttendance(
+  id: string,
+  status: AttendanceStatus,
+): Promise<Customer | null> {
+  try {
+    const updated = await prisma.customer.update({
+      where: { id },
+      data: { attendanceStatus: status as any },
+    });
+    return mapCustomer(updated);
+  } catch {
+    return null;
+  }
 }
