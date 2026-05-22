@@ -81,6 +81,13 @@ export interface RsvpArea {
   y2Pct: number;   // bottom of button strip as % from top of image
 }
 
+export interface MapLinkArea {
+  xPct: number;   // centre-x of clickable zone as % of image width
+  yPct: number;   // centre-y of clickable zone as % of image height (from top)
+  wPct: number;   // width of clickable zone as % of image width
+  hPct: number;   // height of clickable zone as % of image height
+}
+
 export interface Creative {
   id: string;
   eventId: string;
@@ -95,6 +102,8 @@ export interface Creative {
   namePosition?: NamePosition;
   qrPosition?: QrPosition;
   rsvpArea?: RsvpArea;
+  mapUrl?: string;
+  mapLinkArea?: MapLinkArea;
   createdAt: string;
 }
 

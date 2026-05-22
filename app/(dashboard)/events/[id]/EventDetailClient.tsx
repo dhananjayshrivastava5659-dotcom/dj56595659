@@ -189,7 +189,11 @@ async function generatePersonalizedCreative(
     page.drawImage(qrImg, { x: qrX, y: qrY, width: qrSize, height: qrSize });
   }
 
-  // 3. Invisible clickable RSVP annotations over the 3-button strip
+  // 3. Invisible clickable annotations (RSVP + map link)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pageAnnots: any[] = [];
+
+  // RSVP button strip annotations
   if (rsvpArea && rsvpToken) {
     const base = window.location.origin;
     const rsvpUrls = [
@@ -201,18 +205,43 @@ async function generatePersonalizedCreative(
     const ry1 = height * (1 - rsvpArea.y2Pct / 100); // bottom of strip in PDF coords
     const ry2 = height * (1 - rsvpArea.y1Pct / 100); // top of strip in PDF coords
     const btnW = width / 3;
-    const annotRefs = rsvpUrls.map((url, i) =>
+    rsvpUrls.forEach((url, i) => {
+      pageAnnots.push(
+        pdfDoc.context.register(
+          pdfDoc.context.obj({
+            Type: PDFName.of('Annot'),
+            Subtype: PDFName.of('Link'),
+            Rect: [i * btnW, ry1, (i + 1) * btnW, ry2],
+            Border: [0, 0, 0],
+            A: { S: PDFName.of('URI'), URI: PDFString.of(url) },
+          }),
+        ),
+      );
+    });
+  }
+
+  // Map location link annotation
+  if (creative.mapUrl && creative.mapLinkArea) {
+    const mla = creative.mapLinkArea;
+    const cx = (mla.xPct / 100) * width;
+    const cy = height - (mla.yPct / 100) * height; // pdf-lib: y from bottom
+    const hw = (mla.wPct / 100) * width / 2;
+    const hh = (mla.hPct / 100) * height / 2;
+    pageAnnots.push(
       pdfDoc.context.register(
         pdfDoc.context.obj({
           Type: PDFName.of('Annot'),
           Subtype: PDFName.of('Link'),
-          Rect: [i * btnW, ry1, (i + 1) * btnW, ry2],
+          Rect: [cx - hw, cy - hh, cx + hw, cy + hh],
           Border: [0, 0, 0],
-          A: { S: PDFName.of('URI'), URI: PDFString.of(url) },
+          A: { S: PDFName.of('URI'), URI: PDFString.of(creative.mapUrl) },
         }),
       ),
     );
-    page.node.set(PDFName.of('Annots'), pdfDoc.context.obj(annotRefs));
+  }
+
+  if (pageAnnots.length > 0) {
+    page.node.set(PDFName.of('Annots'), pdfDoc.context.obj(pageAnnots));
   }
 
   const out = await pdfDoc.save();

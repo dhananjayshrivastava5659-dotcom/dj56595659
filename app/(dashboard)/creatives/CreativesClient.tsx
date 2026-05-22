@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatDate, getInitials } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import type { User, Event, Creative, NamePosition, QrPosition, RsvpArea } from '@/types';
+import type { User, Event, Creative, NamePosition, QrPosition, RsvpArea, MapLinkArea } from '@/types';
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -26,17 +26,21 @@ function FileIcon({ mimeType, className }: { mimeType: string; className?: strin
 const DEFAULT_NAME_POSITION: NamePosition = { xPct: 50, yPct: 23, fontSizePct: 4, color: '#ffffff', align: 'center' };
 const DEFAULT_QR_POSITION: QrPosition = { xPct: 84, yPct: 84, sizePct: 10 };
 const DEFAULT_RSVP_AREA: RsvpArea = { y1Pct: 82, y2Pct: 96 };
+const DEFAULT_MAP_LINK_AREA: MapLinkArea = { xPct: 73, yPct: 78, wPct: 16, hPct: 7 };
 
-type ClickMode = 'name' | 'qr';
+type ClickMode = 'name' | 'qr' | 'mapLink';
 
-function PositionPicker({ file, namePosition, onNameChange, qrPosition, onQrChange, rsvpArea, onRsvpChange }: {
+function PositionPicker({
+  file, namePosition, onNameChange,
+  qrPosition, onQrChange, rsvpArea, onRsvpChange,
+  mapLinkArea, onMapLinkAreaChange, mapUrl, onMapUrlChange,
+}: {
   file: File;
-  namePosition: NamePosition;
-  onNameChange: (p: NamePosition) => void;
-  qrPosition: QrPosition;
-  onQrChange: (p: QrPosition) => void;
-  rsvpArea: RsvpArea;
-  onRsvpChange: (a: RsvpArea) => void;
+  namePosition: NamePosition;    onNameChange: (p: NamePosition) => void;
+  qrPosition: QrPosition;        onQrChange: (p: QrPosition) => void;
+  rsvpArea: RsvpArea;            onRsvpChange: (a: RsvpArea) => void;
+  mapLinkArea: MapLinkArea;      onMapLinkAreaChange: (a: MapLinkArea) => void;
+  mapUrl: string;                onMapUrlChange: (url: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef    = useRef<HTMLImageElement | null>(null);
@@ -122,6 +126,25 @@ function PositionPicker({ file, namePosition, onNameChange, qrPosition, onQrChan
       ctx.font = `bold ${Math.max(7, qrSide * 0.22)}px sans-serif`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText('QR', qrCx, qrCy);
+
+      // Map link clickable zone (green dashed box)
+      const mlCx = (mapLinkArea.xPct / 100) * canvas.width;
+      const mlCy = (mapLinkArea.yPct / 100) * canvas.height;
+      const mlW  = (mapLinkArea.wPct / 100) * canvas.width;
+      const mlH  = (mapLinkArea.hPct / 100) * canvas.height;
+      const mlX  = mlCx - mlW / 2;
+      const mlY  = mlCy - mlH / 2;
+      ctx.fillStyle = 'rgba(34,197,94,0.12)';
+      ctx.fillRect(mlX, mlY, mlW, mlH);
+      ctx.strokeStyle = 'rgba(34,197,94,0.85)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(mlX + 0.75, mlY + 0.75, mlW - 1.5, mlH - 1.5);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(22,163,74,0.9)';
+      ctx.font = `bold ${Math.max(7, mlH * 0.38)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('Map', mlCx, mlCy);
     }
 
     if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
@@ -131,13 +154,14 @@ function PositionPicker({ file, namePosition, onNameChange, qrPosition, onQrChan
       img.onload = () => { imgRef.current = img; render(img); };
       img.src = blobUrl;
     }
-  }, [isImage, blobUrl, namePosition, qrPosition, rsvpArea, sampleName]);
+  }, [isImage, blobUrl, namePosition, qrPosition, rsvpArea, sampleName, mapLinkArea]);
 
   function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
     const xPct = ((e.clientX - rect.left) / rect.width) * 100;
     const yPct = ((e.clientY - rect.top) / rect.height) * 100;
     if (clickMode === 'name') onNameChange({ ...namePosition, xPct, yPct });
+    else if (clickMode === 'mapLink') onMapLinkAreaChange({ ...mapLinkArea, xPct, yPct });
     else onQrChange({ ...qrPosition, xPct, yPct });
   }
 
@@ -151,13 +175,13 @@ function PositionPicker({ file, namePosition, onNameChange, qrPosition, onQrChan
 
       {isImage ? (
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            {(['name', 'qr'] as ClickMode[]).map(m => (
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            {(['name', 'qr', 'mapLink'] as ClickMode[]).map(m => (
               <button key={m} type="button" onClick={() => setClickMode(m)}
                 className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
                   clickMode === m ? 'bg-[#DB620A] text-white' : 'bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0]'
                 }`}>
-                {m === 'name' ? '✎ Place Name' : '⊡ Place QR'}
+                {m === 'name' ? '✎ Place Name' : m === 'qr' ? '⊡ Place QR' : '📍 Map Link'}
               </button>
             ))}
             <span className="ml-auto text-[10px] text-[#94A3B8]">Click image to set position</span>
@@ -166,7 +190,7 @@ function PositionPicker({ file, namePosition, onNameChange, qrPosition, onQrChan
             className="w-full rounded-lg border border-[#E2E8F0] cursor-crosshair"
             onClick={handleCanvasClick} />
           <p className="text-[10px] text-[#94A3B8] mt-1">
-            Orange dashed box = QR code · Blue band = RSVP button area · text = name position
+            Orange box = QR · Blue band = RSVP · Green box = Map link zone · text = name
           </p>
         </div>
       ) : (
@@ -283,6 +307,51 @@ function PositionPicker({ file, namePosition, onNameChange, qrPosition, onQrChan
           </div>
         </div>
       )}
+
+      {/* ── Map location link (images only) ── */}
+      {isImage && (
+        <div className="rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] p-3 space-y-2.5">
+          <div>
+            <p className="text-[11px] font-semibold text-[#15803D] uppercase tracking-wide">Map Location Link</p>
+            <p className="text-[10px] text-[#166534] mt-0.5">
+              Green box on preview. Click the map icon on your creative or adjust below. An invisible link will be placed over it in the PDF.
+            </p>
+          </div>
+          <div className="space-y-0.5">
+            <label className="text-[10px] text-[#166534]">Google Maps URL</label>
+            <Input value={mapUrl} onChange={e => onMapUrlChange(e.target.value)}
+              placeholder="https://maps.app.goo.gl/..." className="h-7 text-xs" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-0.5">
+              <label className="text-[10px] text-[#166534]">Centre X: {Math.round(mapLinkArea.xPct)}%</label>
+              <Input type="number" min="0" max="100" value={Math.round(mapLinkArea.xPct)}
+                onChange={e => onMapLinkAreaChange({ ...mapLinkArea, xPct: +e.target.value })}
+                className="h-7 text-xs" />
+            </div>
+            <div className="space-y-0.5">
+              <label className="text-[10px] text-[#166534]">Centre Y: {Math.round(mapLinkArea.yPct)}%</label>
+              <Input type="number" min="0" max="100" value={Math.round(mapLinkArea.yPct)}
+                onChange={e => onMapLinkAreaChange({ ...mapLinkArea, yPct: +e.target.value })}
+                className="h-7 text-xs" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-0.5">
+              <label className="text-[10px] text-[#166534]">Width: {Math.round(mapLinkArea.wPct)}% of image</label>
+              <input type="range" min="2" max="60" step="0.5" value={mapLinkArea.wPct}
+                onChange={e => onMapLinkAreaChange({ ...mapLinkArea, wPct: +e.target.value })}
+                className="w-full accent-[#16A34A]" />
+            </div>
+            <div className="space-y-0.5">
+              <label className="text-[10px] text-[#166534]">Height: {Math.round(mapLinkArea.hPct)}% of image</label>
+              <input type="range" min="2" max="40" step="0.5" value={mapLinkArea.hPct}
+                onChange={e => onMapLinkAreaChange({ ...mapLinkArea, hPct: +e.target.value })}
+                className="w-full accent-[#16A34A]" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -296,6 +365,8 @@ function UploadDialog({ eventId, open, onClose, onUploaded }: {
   const [namePosition, setNamePosition]       = useState<NamePosition>(DEFAULT_NAME_POSITION);
   const [qrPosition, setQrPosition]           = useState<QrPosition>(DEFAULT_QR_POSITION);
   const [rsvpArea, setRsvpArea]               = useState<RsvpArea>(DEFAULT_RSVP_AREA);
+  const [mapUrl, setMapUrl]                   = useState('');
+  const [mapLinkArea, setMapLinkArea]         = useState<MapLinkArea>(DEFAULT_MAP_LINK_AREA);
   const [loading, setLoading]                 = useState(false);
   const [error, setError]                     = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -307,6 +378,8 @@ function UploadDialog({ eventId, open, onClose, onUploaded }: {
     setNamePosition(DEFAULT_NAME_POSITION);
     setQrPosition(DEFAULT_QR_POSITION);
     setRsvpArea(DEFAULT_RSVP_AREA);
+    setMapUrl('');
+    setMapLinkArea(DEFAULT_MAP_LINK_AREA);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -325,6 +398,10 @@ function UploadDialog({ eventId, open, onClose, onUploaded }: {
         if (file.type.startsWith('image/')) {
           fd.append('qrPosition', JSON.stringify(qrPosition));
           fd.append('rsvpArea', JSON.stringify(rsvpArea));
+          if (mapUrl.trim()) {
+            fd.append('mapUrl', mapUrl.trim());
+            fd.append('mapLinkArea', JSON.stringify(mapLinkArea));
+          }
         }
       }
       const res  = await fetch('/api/creatives', { method: 'POST', body: fd });
@@ -392,7 +469,7 @@ function UploadDialog({ eventId, open, onClose, onUploaded }: {
                   <p className="text-sm font-semibold text-[#0F172A]">Enable Personalisation</p>
                   <p className="text-xs text-[#94A3B8]">
                     {file.type.startsWith('image/')
-                      ? 'Set name position, QR code position & RSVP button area'
+                      ? 'Set name, QR code, RSVP area & optional map link zone'
                       : 'Set where the customer name should appear'}
                   </p>
                 </div>
@@ -408,6 +485,10 @@ function UploadDialog({ eventId, open, onClose, onUploaded }: {
                     onQrChange={setQrPosition}
                     rsvpArea={rsvpArea}
                     onRsvpChange={setRsvpArea}
+                    mapLinkArea={mapLinkArea}
+                    onMapLinkAreaChange={setMapLinkArea}
+                    mapUrl={mapUrl}
+                    onMapUrlChange={setMapUrl}
                   />
                 </div>
               )}
@@ -510,6 +591,11 @@ function CreativeCard({ creative, canDelete, onDelete }: {
               {creative.qrPosition && (
                 <span className="text-[10px] bg-[#FEF0E7] text-[#DB620A] px-1.5 py-0.5 rounded font-semibold shrink-0">
                   QR + RSVP
+                </span>
+              )}
+              {creative.mapUrl && (
+                <span className="text-[10px] bg-[#F0FDF4] text-[#16A34A] px-1.5 py-0.5 rounded font-semibold shrink-0">
+                  📍 Map
                 </span>
               )}
             </div>

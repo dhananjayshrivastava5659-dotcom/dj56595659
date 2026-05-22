@@ -1,6 +1,6 @@
 import { prisma } from './db';
 import { getUserById, getEmployeeIdForUserId } from './auth';
-import type { Event, Customer, Notification, Creative, InviteShare, AttendanceStatus } from '@/types';
+import type { Event, Customer, Notification, Creative, InviteShare, AttendanceStatus, MapLinkArea } from '@/types';
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
 
@@ -79,6 +79,8 @@ function mapCreative(c: any): Creative {
     namePosition: c.namePosition ?? undefined,
     qrPosition: c.qrPosition ?? undefined,
     rsvpArea: c.rsvpArea ?? undefined,
+    mapUrl: c.mapUrl ?? undefined,
+    mapLinkArea: (c.mapLinkArea ?? undefined) as MapLinkArea | undefined,
     createdAt: c.createdAt instanceof Date ? c.createdAt.toISOString() : c.createdAt,
   };
 }
@@ -280,7 +282,7 @@ export async function getCreativesByEvent(eventId: string): Promise<Creative[]> 
       id: true, eventId: true, eventName: true,
       uploadedById: true, uploadedByName: true,
       label: true, fileName: true, mimeType: true, sizeBytes: true,
-      isPersonalizable: true, namePosition: true, qrPosition: true, rsvpArea: true, createdAt: true,
+      isPersonalizable: true, namePosition: true, qrPosition: true, rsvpArea: true, mapUrl: true, mapLinkArea: true, createdAt: true,
     },
   });
   return rows.map(mapCreative);
@@ -293,7 +295,7 @@ export async function getCreativeById(id: string): Promise<Creative | undefined>
       id: true, eventId: true, eventName: true,
       uploadedById: true, uploadedByName: true,
       label: true, fileName: true, mimeType: true, sizeBytes: true,
-      isPersonalizable: true, namePosition: true, qrPosition: true, rsvpArea: true, createdAt: true,
+      isPersonalizable: true, namePosition: true, qrPosition: true, rsvpArea: true, mapUrl: true, mapLinkArea: true, createdAt: true,
     },
   });
   return row ? mapCreative(row) : undefined;
@@ -316,6 +318,8 @@ export async function addCreative(creative: Creative, fileBuffer: Buffer): Promi
       namePosition: (creative.namePosition ?? undefined) as any,
       qrPosition: (creative.qrPosition ?? undefined) as any,
       rsvpArea: (creative.rsvpArea ?? undefined) as any,
+      mapUrl: creative.mapUrl ?? null,
+      mapLinkArea: (creative.mapLinkArea ?? undefined) as any,
     },
   });
 }
