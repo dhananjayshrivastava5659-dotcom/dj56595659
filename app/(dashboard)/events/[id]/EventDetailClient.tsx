@@ -461,7 +461,8 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
       logShare('PERSONALISED');
     } catch (err) {
       console.error('[generatePersonalisedInvite]', err);
-      setError('Failed to generate personalised invite. Please try again.');
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Generation failed: ${msg}`);
     } finally {
       setGenerating(false);
     }
