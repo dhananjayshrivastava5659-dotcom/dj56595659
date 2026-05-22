@@ -113,11 +113,15 @@ export function TopNav({ user }: { user: User }) {
             <p className="text-xs text-[#DB620A] font-semibold mt-1">{ROLE_LABELS[user.role]}</p>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <form action="/api/auth/logout" method="POST">
-            <DropdownMenuItem destructive asChild>
-              <button type="submit" className="w-full">Sign Out</button>
-            </DropdownMenuItem>
-          </form>
+          <DropdownMenuItem
+            destructive
+            onSelect={async () => {
+              await fetch('/api/auth/logout', { method: 'POST' });
+              window.location.href = '/login';
+            }}
+          >
+            Sign Out
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </header>

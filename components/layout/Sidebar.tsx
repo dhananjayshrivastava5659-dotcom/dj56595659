@@ -68,15 +68,17 @@ export function Sidebar({ user }: { user: User }) {
             <p className="text-[11px] text-white/40 mt-0.5">{ROLE_LABELS[user.role]} · {user.employeeId}</p>
           </div>
         </div>
-        <form action="/api/auth/logout" method="POST">
-          <button
-            type="submit"
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/50 hover:bg-white/8 hover:text-white/90 transition-all font-medium"
-          >
-            <LogOut size={16} className="flex-shrink-0" />
-            Sign Out
-          </button>
-        </form>
+        <button
+          type="button"
+          onClick={async () => {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login';
+          }}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/50 hover:bg-white/8 hover:text-white/90 transition-all font-medium"
+        >
+          <LogOut size={16} className="flex-shrink-0" />
+          Sign Out
+        </button>
       </div>
     </aside>
   );
