@@ -1,4 +1,5 @@
 'use client';
+import fontkit from '@pdf-lib/fontkit';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -74,7 +75,6 @@ async function generatePersonalizedCreative(
 
   if (creative.mimeType === 'application/pdf') {
     const { PDFDocument, rgb, StandardFonts, PDFName, PDFString, PDFDict } = await import('pdf-lib');
-    const fontkit = (await import('@pdf-lib/fontkit')).default;
     const bytes = await fileRes.arrayBuffer();
     const pdfDoc = await PDFDocument.load(bytes);
     pdfDoc.registerFontkit(fontkit);
@@ -129,7 +129,6 @@ async function generatePersonalizedCreative(
 
   // Image → PDF via pdf-lib
   const { PDFDocument, rgb, StandardFonts, PDFName, PDFString } = await import('pdf-lib');
-  const fontkit = (await import('@pdf-lib/fontkit')).default;
   const bytes = new Uint8Array(await fileRes.arrayBuffer());
   const qrPos    = creative.qrPosition;
   const rsvpArea = creative.rsvpArea;
@@ -460,7 +459,8 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       logShare('PERSONALISED');
-    } catch {
+    } catch (err) {
+      console.error('[generatePersonalisedInvite]', err);
       setError('Failed to generate personalised invite. Please try again.');
     } finally {
       setGenerating(false);
