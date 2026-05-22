@@ -81,7 +81,11 @@ async function generatePersonalizedCreative(
     // 1. Inject customer name if position is defined
     if (pos) {
       const { width, height } = page.getSize();
-      const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const mulishRes  = await fetch('/fonts/Mulish-Bold.ttf').catch(() => null);
+      const mulishData = mulishRes ? new Uint8Array(await mulishRes.arrayBuffer()) : null;
+      const font = mulishData
+        ? await pdfDoc.embedFont(mulishData)
+        : await pdfDoc.embedFont(StandardFonts.HelveticaBold);
       const fontSize = (pos.fontSizePct / 100) * height;
       const textWidth = font.widthOfTextAtSize(name, fontSize);
       let x = (pos.xPct / 100) * width;
@@ -159,7 +163,11 @@ async function generatePersonalizedCreative(
 
   // 1. Name text
   if (pos && name.trim()) {
-    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const mulishRes  = await fetch('/fonts/Mulish-Bold.ttf').catch(() => null);
+    const mulishData = mulishRes ? new Uint8Array(await mulishRes.arrayBuffer()) : null;
+    const font = mulishData
+      ? await pdfDoc.embedFont(mulishData)
+      : await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const fontSize = (pos.fontSizePct / 100) * height;
     const textWidth = font.widthOfTextAtSize(name, fontSize);
     let x = (pos.xPct / 100) * width;

@@ -61,8 +61,10 @@ function PositionPicker({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    function render(img: HTMLImageElement) {
+    async function render(img: HTMLImageElement) {
       if (!canvas) return;
+      // Ensure Mulish is loaded before drawing (declared in globals.css via @font-face)
+      try { await document.fonts.load('bold 16px Mulish'); } catch {}
       const parent  = canvas.parentElement;
       const displayW = parent ? parent.clientWidth : 460;
       const scale    = displayW / img.naturalWidth;
@@ -101,7 +103,7 @@ function PositionPicker({
 
       // Name text
       const nameFs = Math.max(6, (namePosition.fontSizePct / 100) * canvas.height);
-      ctx.font = `bold ${nameFs}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+      ctx.font = `bold ${nameFs}px Mulish, "Helvetica Neue", Helvetica, sans-serif`;
       ctx.fillStyle = namePosition.color;
       ctx.textAlign = namePosition.align as CanvasTextAlign;
       ctx.textBaseline = 'middle';
