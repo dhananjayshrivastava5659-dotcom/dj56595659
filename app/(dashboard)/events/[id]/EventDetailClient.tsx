@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Calendar, Copy, Check, Users, Plus, Loader2,
   CheckCircle2, XCircle, Clock, Share2, Sparkles, Download, Palette, FileText, ImageIcon,
-  ShieldCheck, ChevronDown, ChevronUp, UserPlus, Trash2,
+  ShieldCheck, ChevronDown, ChevronUp, UserPlus, Trash2, BarChart2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatDate, STATUS_COLORS, STATUS_LABELS, getInitials } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import type { User, Event, Customer, CustomerStatus, Creative, RsvpStatus } from '@/types';
+import type { User, Event, Customer, CustomerStatus, Creative, RsvpStatus, InviteShare } from '@/types';
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   OPEN_EVENT: 'Open Event', INVITATION_ONLY: 'By Invitation',
@@ -341,6 +341,22 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
       .finally(() => setLoading(false));
   }, [open, eventId]);
 
+  function logShare(type: 'PERSONALISED' | 'NON_PERSONAL' | 'HTML') {
+    if (!selected) return;
+    fetch('/api/invite-shares', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventId,
+        customerId: customer.id,
+        customerName: customer.fullName,
+        creativeId: selected.id,
+        creativeLabel: selected.label,
+        type,
+      }),
+    }).catch(() => {});
+  }
+
   function handleClose() {
     onClose(); setMode(null); setError('');
     setCustomName(customer.fullName); setSelected(null);
@@ -360,6 +376,7 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+      logShare('NON_PERSONAL');
     } catch {
       setError('Download failed. Please try again.');
     }
@@ -382,6 +399,7 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+      logShare('PERSONALISED');
     } catch {
       setError('Failed to generate personalised invite. Please try again.');
     } finally {
@@ -394,6 +412,7 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
     setGenerating(true); setError('');
     try {
       await generateHtmlInvite(selected, customer);
+      logShare('HTML');
     } catch {
       setError('Failed to generate HTML invite. Please try again.');
     } finally {
@@ -412,6 +431,7 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
       a.download = `invite-${customer.fullName.replace(/\s+/g, '-')}.${ext}`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+      logShare('NON_PERSONAL');
     } catch {
       setError('Failed to generate invite with RSVP links. Please try again.');
     } finally {
@@ -693,6 +713,242 @@ function ManageApproversSection({ event, onUpdated }: {
   );
 }
 
+// ── Reports Tab ───────────────────────────────────────────────────────────────
+
+function ReportsTab({ eventId, event }: { eventId: string; event: Event }) {
+  const [data, setData] = useState<{ customers: Customer[]; inviteShares: InviteShare[] } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [dlLoading, setDlLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/events/${eventId}/report`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setData(d))
+      .finally(() => setLoading(false));
+  }, [eventId]);
+
+  async function handleDownload() {
+    if (!data) return;
+    setDlLoading(true);
+    try {
+      const XLSX = (await import('xlsx')).default;
+      const wb = XLSX.utils.book_new();
+      const { customers, inviteShares } = data;
+      const approved = customers.filter(c => c.status === 'APPROVED');
+
+      // Sheet 1: Summary
+      const summaryRows: (string | number)[][] = [
+        ['iEvent Report', event.name],
+        ['Event Code', event.eventCode],
+        ['Date', event.date],
+        ['Time', event.time],
+        ['Venue', event.venue],
+        ['City', `${event.city}, ${event.state}`],
+        ['Creator', event.creatorName],
+        [''],
+        ['CUSTOMER SUMMARY', ''],
+        ['Total Customers Added', customers.length],
+        ['Total Approved', customers.filter(c => c.status === 'APPROVED').length],
+        ['Total Rejected', customers.filter(c => c.status === 'REJECTED').length],
+        ['Total Pending', customers.filter(c => c.status === 'PENDING').length],
+        [''],
+        ['RSVP SUMMARY (Approved Customers)', ''],
+        ['Attending', approved.filter(c => c.rsvpStatus === 'ATTENDING').length],
+        ['Maybe', approved.filter(c => c.rsvpStatus === 'MAYBE').length],
+        ['Not Attending', approved.filter(c => c.rsvpStatus === 'NOT_ATTENDING').length],
+        ['No Response', approved.filter(c => c.rsvpStatus === 'NO_RESPONSE').length],
+        [''],
+        ['INVITATIONS SHARED', ''],
+        ['Total Invitations Shared', inviteShares.length],
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'Summary');
+
+      // Sheet 2: Customers
+      const customerRows: (string | number)[][] = [
+        ['Full Name', 'Mobile', 'Email', 'Organisation', 'Guests Accompanied', 'Approval Status', 'RSVP Status', 'Added By', 'Added At', 'Review Note'],
+        ...customers.map(c => [
+          c.fullName, c.mobile, c.email || '', c.organisation || '',
+          c.guestsAccompanied ?? 0, c.status, c.rsvpStatus,
+          c.addedByName, new Date(c.createdAt).toLocaleString('en-IN'),
+          c.reviewNote || '',
+        ]),
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(customerRows), 'Customers');
+
+      // Sheet 3: Invite Shares
+      const typeLabel = (t: string) =>
+        t === 'PERSONALISED' ? 'Personalised' : t === 'NON_PERSONAL' ? 'Non-Personalised' : 'HTML Template';
+      const shareRows: (string | number)[][] = inviteShares.length > 0 ? [
+        ['Shared By', 'Customer Name', 'Creative', 'Type', 'Date & Time'],
+        ...inviteShares.map(s => [
+          s.sharedByName, s.customerName, s.creativeLabel,
+          typeLabel(s.type), new Date(s.createdAt).toLocaleString('en-IN'),
+        ]),
+      ] : [['No invitations shared yet']];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(shareRows), 'Invite Shares');
+
+      const safeName = event.name.replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').slice(0, 50);
+      XLSX.writeFile(wb, `${safeName}-report.xlsx`);
+    } finally {
+      setDlLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 size={24} className="animate-spin text-[#DB620A]" />
+      </div>
+    );
+  }
+  if (!data) return null;
+
+  const { customers, inviteShares } = data;
+  const approved      = customers.filter(c => c.status === 'APPROVED');
+  const totalAdded    = customers.length;
+  const totalApproved = customers.filter(c => c.status === 'APPROVED').length;
+  const totalRejected = customers.filter(c => c.status === 'REJECTED').length;
+  const totalPending  = customers.filter(c => c.status === 'PENDING').length;
+  const attending     = approved.filter(c => c.rsvpStatus === 'ATTENDING').length;
+  const maybe         = approved.filter(c => c.rsvpStatus === 'MAYBE').length;
+  const notAttending  = approved.filter(c => c.rsvpStatus === 'NOT_ATTENDING').length;
+  const noResponse    = approved.filter(c => c.rsvpStatus === 'NO_RESPONSE').length;
+  const totalShared   = inviteShares.length;
+
+  const sharesByUser = Object.entries(
+    inviteShares.reduce((acc, s) => {
+      acc[s.sharedByName] = (acc[s.sharedByName] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>),
+  ).sort(([, a], [, b]) => b - a);
+
+  const statRow = (items: { label: string; value: number; bg: string; txt: string }[]) => (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {items.map(s => (
+        <div key={s.label} className={`rounded-xl border p-4 ${s.bg}`}>
+          <p className={`text-3xl font-black leading-none ${s.txt}`}>{s.value}</p>
+          <p className={`text-xs font-semibold mt-2 ${s.txt} opacity-80`}>{s.label}</p>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-lg font-black text-[#0F172A]">Event Report</h2>
+          <p className="text-xs text-[#94A3B8] mt-0.5">Live snapshot · {event.name}</p>
+        </div>
+        <Button loading={dlLoading} onClick={handleDownload} className="shrink-0">
+          <Download size={15} /> Download Excel
+        </Button>
+      </div>
+
+      {/* Customer Summary */}
+      <div>
+        <p className="text-[11px] font-semibold text-[#475569] uppercase tracking-widest mb-3">
+          Customer Summary
+        </p>
+        {statRow([
+          { label: 'Total Added',  value: totalAdded,    bg: 'bg-[#EFF6FF] border-[#BFDBFE]', txt: 'text-[#1D4ED8]' },
+          { label: 'Approved',     value: totalApproved, bg: 'bg-[#DCFCE7] border-[#86EFAC]', txt: 'text-[#15803D]' },
+          { label: 'Rejected',     value: totalRejected, bg: 'bg-[#FEF2F2] border-[#FCA5A5]', txt: 'text-[#DC2626]' },
+          { label: 'Pending',      value: totalPending,  bg: 'bg-[#FEF9C3] border-[#FDE047]', txt: 'text-[#A16207]' },
+        ])}
+      </div>
+
+      {/* RSVP Summary */}
+      <div>
+        <p className="text-[11px] font-semibold text-[#475569] uppercase tracking-widest mb-1">
+          RSVP Status
+        </p>
+        <p className="text-xs text-[#94A3B8] mb-3">
+          Across {totalApproved} approved customer{totalApproved !== 1 ? 's' : ''}
+        </p>
+        {statRow([
+          { label: '✓ Attending',  value: attending,    bg: 'bg-[#DCFCE7] border-[#86EFAC]', txt: 'text-[#15803D]' },
+          { label: '? Maybe',      value: maybe,        bg: 'bg-[#FEF9C3] border-[#FDE047]', txt: 'text-[#A16207]' },
+          { label: '✗ Not Going',  value: notAttending, bg: 'bg-[#FEF2F2] border-[#FCA5A5]', txt: 'text-[#DC2626]' },
+          { label: 'No Response',  value: noResponse,   bg: 'bg-[#F1F5F9] border-[#E2E8F0]', txt: 'text-[#475569]' },
+        ])}
+      </div>
+
+      {/* Invitations Shared */}
+      <Card className="border-[#E2E8F0]">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Share2 size={15} className="text-[#DB620A]" /> Invitations Shared
+            </CardTitle>
+            <span className="text-3xl font-black text-[#DB620A] leading-none">{totalShared}</span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {sharesByUser.length === 0 ? (
+            <p className="text-xs text-[#94A3B8] text-center py-4 italic">
+              No invitations have been shared yet. Shares are tracked when team members download invites.
+            </p>
+          ) : (
+            <div className="space-y-0.5">
+              <div className="grid grid-cols-2 text-[11px] font-semibold text-[#94A3B8] uppercase tracking-wide pb-2 mb-1 border-b border-[#F1F5F9]">
+                <span>Team Member</span>
+                <span className="text-right">Invites</span>
+              </div>
+              {sharesByUser.map(([name, count]) => (
+                <div key={name} className="grid grid-cols-2 items-center py-2 border-b border-[#F8FAFC] last:border-0">
+                  <div className="flex items-center gap-2">
+                    <Avatar size="sm">
+                      <AvatarFallback className="text-[10px]">{getInitials(name)}</AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-semibold text-[#0F172A]">{name}</span>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <div className="flex-1 max-w-[80px] h-1.5 bg-[#FEF0E7] rounded-full overflow-hidden">
+                      <div
+                        className="h-1.5 bg-[#DB620A] rounded-full"
+                        style={{ width: `${Math.round((count / totalShared) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-black text-[#DB620A] min-w-[1.5rem] text-right">{count}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Post Event Status — Coming Soon */}
+      <Card className="border-dashed border-2 border-[#E2E8F0]">
+        <CardContent className="py-8 text-center">
+          <span className="inline-flex items-center gap-1.5 bg-[#F1F5F9] rounded-full px-3 py-1 text-[10px] font-bold text-[#64748B] uppercase tracking-wide mb-3">
+            <Clock size={10} /> Coming Soon
+          </span>
+          <p className="font-semibold text-[#475569]">Post Event Status</p>
+          <p className="text-xs text-[#94A3B8] mt-1 max-w-xs mx-auto">
+            Track how many approved customers actually attended vs didn't show up after the event concludes.
+          </p>
+          <div className="grid grid-cols-2 gap-3 mt-5 max-w-[200px] mx-auto opacity-30 pointer-events-none select-none">
+            <div className="bg-[#DCFCE7] border border-[#86EFAC] rounded-xl p-3 text-center">
+              <p className="text-2xl font-black text-[#15803D]">—</p>
+              <p className="text-[10px] font-semibold text-[#15803D] mt-0.5">Attended</p>
+            </div>
+            <div className="bg-[#FEF2F2] border border-[#FCA5A5] rounded-xl p-3 text-center">
+              <p className="text-2xl font-black text-[#DC2626]">—</p>
+              <p className="text-[10px] font-semibold text-[#DC2626] mt-0.5">No Show</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function CustomerRow({ customer, onShare, canUpdateRsvp, onRsvpUpdate }: {
   customer: Customer;
   onShare?: () => void;
@@ -946,6 +1202,11 @@ export function EventDetailClient({ user, eventId }: Props) {
               </span>
             )}
           </TabsTrigger>
+          {isCreatorOrAdmin && (
+            <TabsTrigger value="reports" className="flex items-center gap-1.5">
+              <BarChart2 size={13} /> Reports
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="overview" className="mt-4">
@@ -1095,6 +1356,12 @@ export function EventDetailClient({ user, eventId }: Props) {
             </Card>
           )}
         </TabsContent>
+
+        {isCreatorOrAdmin && (
+          <TabsContent value="reports" className="mt-4">
+            <ReportsTab eventId={eventId} event={event} />
+          </TabsContent>
+        )}
       </Tabs>
 
       <AddCustomerDialog eventId={eventId} open={addOpen} onClose={() => setAddOpen(false)} onAdded={fetchCustomers} />

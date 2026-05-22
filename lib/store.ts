@@ -1,6 +1,6 @@
 import { prisma } from './db';
 import { getUserById, getEmployeeIdForUserId } from './auth';
-import type { Event, Customer, Notification, Creative } from '@/types';
+import type { Event, Customer, Notification, Creative, InviteShare } from '@/types';
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
 
@@ -327,6 +327,47 @@ export async function getCreativeFile(id: string): Promise<{ buffer: Buffer; mim
   });
   if (!row) return undefined;
   return { buffer: Buffer.from(row.fileData), mimeType: row.mimeType };
+}
+
+// ── Invite Shares ─────────────────────────────────────────────────────────────
+
+function mapInviteShare(s: any): InviteShare {
+  return {
+    id: s.id,
+    eventId: s.eventId,
+    customerId: s.customerId,
+    customerName: s.customerName,
+    sharedById: s.sharedById,
+    sharedByName: s.sharedByName,
+    creativeId: s.creativeId,
+    creativeLabel: s.creativeLabel,
+    type: s.type as InviteShare['type'],
+    createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : s.createdAt,
+  };
+}
+
+export async function addInviteShare(share: InviteShare): Promise<void> {
+  await prisma.inviteShare.create({
+    data: {
+      id: share.id,
+      eventId: share.eventId,
+      customerId: share.customerId,
+      customerName: share.customerName,
+      sharedById: share.sharedById,
+      sharedByName: share.sharedByName,
+      creativeId: share.creativeId,
+      creativeLabel: share.creativeLabel,
+      type: share.type,
+    },
+  });
+}
+
+export async function getInviteSharesByEvent(eventId: string): Promise<InviteShare[]> {
+  const rows = await prisma.inviteShare.findMany({
+    where: { eventId },
+    orderBy: { createdAt: 'desc' },
+  });
+  return rows.map(mapInviteShare);
 }
 
 // ── Notifications ─────────────────────────────────────────────────────────────

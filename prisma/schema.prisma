@@ -74,6 +74,7 @@ model Event {
   customers     Customer[]
   creatives     Creative[]
   subscriptions Subscription[]
+  inviteShares  InviteShare[]
 }
 
 model Customer {
@@ -136,4 +137,19 @@ model Subscription {
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@id([userId, eventId])
+}
+
+model InviteShare {
+  id            String   @id
+  eventId       String
+  customerId    String
+  customerName  String
+  sharedById    String
+  sharedByName  String
+  creativeId    String
+  creativeLabel String
+  type          String
+  createdAt     DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 }

@@ -94,6 +94,21 @@ export interface Creative {
   createdAt: string;
 }
 
+export type InviteShareType = 'PERSONALISED' | 'NON_PERSONAL' | 'HTML';
+
+export interface InviteShare {
+  id: string;
+  eventId: string;
+  customerId: string;
+  customerName: string;
+  sharedById: string;
+  sharedByName: string;
+  creativeId: string;
+  creativeLabel: string;
+  type: InviteShareType;
+  createdAt: string;
+}
+
 export interface Notification {
   id: string;
   userId: string;
