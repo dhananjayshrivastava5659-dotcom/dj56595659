@@ -539,43 +539,99 @@ function ShareResourceDialog({ customer, eventId, open, onClose }: {
   );
 }
 
-function CustomerRow({ customer, onShare }: { customer: Customer; onShare?: () => void }) {
+function CustomerRow({ customer, onShare, canUpdateRsvp, onRsvpUpdate }: {
+  customer: Customer;
+  onShare?: () => void;
+  canUpdateRsvp?: boolean;
+  onRsvpUpdate?: () => void;
+}) {
   const chip = STATUS_CHIP[customer.status];
+  const [showRsvpPicker, setShowRsvpPicker] = useState(false);
+  const [rsvpLoading, setRsvpLoading] = useState(false);
+
+  async function handleRsvpChange(newStatus: RsvpStatus) {
+    setRsvpLoading(true);
+    try {
+      const res = await fetch(`/api/customers/${customer.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'UPDATE_RSVP', rsvpStatus: newStatus }),
+      });
+      if (res.ok) { onRsvpUpdate?.(); setShowRsvpPicker(false); }
+    } finally { setRsvpLoading(false); }
+  }
+
+  const currentRsvp = customer.rsvpStatus ?? 'NO_RESPONSE';
+
   return (
-    <div className="flex items-center gap-3 p-4 border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] transition-colors">
-      <Avatar size="sm">
-        <AvatarFallback className="text-[10px]">{getInitials(customer.fullName)}</AvatarFallback>
-      </Avatar>
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-sm text-[#0F172A]">{customer.fullName}</p>
-        <div className="flex flex-wrap gap-3 mt-0.5 text-xs text-[#94A3B8]">
-          <span>{customer.mobile}</span>
-          {customer.email && <span>{customer.email}</span>}
-          {customer.organisation && <span>{customer.organisation}</span>}
+    <div className="border-b border-[#F1F5F9] last:border-0">
+      <div className="flex items-center gap-3 p-4 hover:bg-[#F8FAFC] transition-colors">
+        <Avatar size="sm">
+          <AvatarFallback className="text-[10px]">{getInitials(customer.fullName)}</AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm text-[#0F172A]">{customer.fullName}</p>
+          <div className="flex flex-wrap gap-3 mt-0.5 text-xs text-[#94A3B8]">
+            <span>{customer.mobile}</span>
+            {customer.email && <span>{customer.email}</span>}
+            {customer.organisation && <span>{customer.organisation}</span>}
+          </div>
+          {customer.reviewNote && customer.status === 'REJECTED' && (
+            <p className="text-xs text-[#DC2626] mt-1">Note: {customer.reviewNote}</p>
+          )}
         </div>
-        {customer.reviewNote && customer.status === 'REJECTED' && (
-          <p className="text-xs text-[#DC2626] mt-1">Note: {customer.reviewNote}</p>
+        {customer.guestsAccompanied ? (
+          <span className="text-xs bg-[#F1F5F9] text-[#475569] px-2 py-0.5 rounded font-medium shrink-0">
+            +{customer.guestsAccompanied} guest{customer.guestsAccompanied !== 1 ? 's' : ''}
+          </span>
+        ) : null}
+        {customer.status === 'APPROVED' && (
+          <button
+            type="button"
+            onClick={() => canUpdateRsvp && setShowRsvpPicker(v => !v)}
+            className={`text-[11px] px-2 py-0.5 rounded-full font-semibold shrink-0 transition-all ${RSVP_CHIP[currentRsvp].className} ${canUpdateRsvp ? 'cursor-pointer ring-1 ring-transparent hover:ring-current hover:shadow-sm' : 'cursor-default'}`}
+            title={canUpdateRsvp ? 'Click to update RSVP' : undefined}
+          >
+            {RSVP_CHIP[currentRsvp].label}{canUpdateRsvp && <span className="ml-1 opacity-60">▾</span>}
+          </button>
         )}
+        <span className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${chip.className}`}>
+          {chip.icon}{chip.label}
+        </span>
+        {customer.status === 'APPROVED' && onShare && (
+          <Button size="sm" variant="outline" className="shrink-0 text-xs h-7 px-2" onClick={onShare}>
+            <Share2 size={12} /> Share
+          </Button>
+        )}
+        <span className="text-[10px] text-[#94A3B8] shrink-0">by {customer.addedByName}</span>
       </div>
-      {customer.guestsAccompanied ? (
-        <span className="text-xs bg-[#F1F5F9] text-[#475569] px-2 py-0.5 rounded font-medium shrink-0">
-          +{customer.guestsAccompanied} guest{customer.guestsAccompanied !== 1 ? 's' : ''}
-        </span>
-      ) : null}
-      {customer.status === 'APPROVED' && (
-        <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${RSVP_CHIP[customer.rsvpStatus ?? 'NO_RESPONSE'].className}`}>
-          {RSVP_CHIP[customer.rsvpStatus ?? 'NO_RESPONSE'].label}
-        </span>
+
+      {/* Inline RSVP picker — visible only for authorised users */}
+      {customer.status === 'APPROVED' && canUpdateRsvp && showRsvpPicker && (
+        <div className="px-4 pb-3 flex flex-wrap gap-2 items-center">
+          <span className="text-[11px] text-[#94A3B8] font-medium mr-1">Set RSVP:</span>
+          {(['NO_RESPONSE', 'ATTENDING', 'MAYBE', 'NOT_ATTENDING'] as RsvpStatus[]).map(s => (
+            <button
+              key={s}
+              disabled={rsvpLoading}
+              onClick={() => handleRsvpChange(s)}
+              className={`text-[11px] px-2.5 py-1 rounded-full font-semibold border-2 transition-all disabled:opacity-50 ${
+                currentRsvp === s
+                  ? `${RSVP_CHIP[s].className} border-current`
+                  : 'bg-white border-[#E2E8F0] text-[#64748B] hover:border-[#DB620A] hover:text-[#DB620A]'
+              }`}
+            >
+              {rsvpLoading && currentRsvp !== s ? '…' : RSVP_CHIP[s].label}
+            </button>
+          ))}
+          <button
+            onClick={() => setShowRsvpPicker(false)}
+            className="text-[11px] text-[#94A3B8] hover:text-[#475569] ml-1"
+          >
+            Cancel
+          </button>
+        </div>
       )}
-      <span className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-semibold shrink-0 ${chip.className}`}>
-        {chip.icon}{chip.label}
-      </span>
-      {customer.status === 'APPROVED' && onShare && (
-        <Button size="sm" variant="outline" className="shrink-0 text-xs h-7 px-2" onClick={onShare}>
-          <Share2 size={12} /> Share
-        </Button>
-      )}
-      <span className="text-[10px] text-[#94A3B8] shrink-0">by {customer.addedByName}</span>
     </div>
   );
 }
@@ -812,7 +868,13 @@ export function EventDetailClient({ user, eventId }: Props) {
                   </CardHeader>
                   <CardContent className="p-0">
                     {approved.map(c => (
-                      <CustomerRow key={c.id} customer={c} onShare={() => openShare(c)} />
+                      <CustomerRow
+                        key={c.id}
+                        customer={c}
+                        onShare={() => openShare(c)}
+                        canUpdateRsvp
+                        onRsvpUpdate={fetchCustomers}
+                      />
                     ))}
                   </CardContent>
                 </Card>
@@ -855,6 +917,8 @@ export function EventDetailClient({ user, eventId }: Props) {
                       key={c.id}
                       customer={c}
                       onShare={c.status === 'APPROVED' ? () => openShare(c) : undefined}
+                      canUpdateRsvp={c.status === 'APPROVED'}
+                      onRsvpUpdate={fetchCustomers}
                     />
                   ))
                 )}

@@ -367,3 +367,18 @@ export async function recordRsvp(
     return null;
   }
 }
+
+export async function updateCustomerRsvp(
+  id: string,
+  status: 'NO_RESPONSE' | 'ATTENDING' | 'MAYBE' | 'NOT_ATTENDING',
+): Promise<Customer | null> {
+  try {
+    const updated = await prisma.customer.update({
+      where: { id },
+      data: { rsvpStatus: status as any },
+    });
+    return mapCustomer(updated);
+  } catch {
+    return null;
+  }
+}
