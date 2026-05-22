@@ -23,9 +23,9 @@ function FileIcon({ mimeType, className }: { mimeType: string; className?: strin
   return <ImageIcon className={className} />;
 }
 
-const DEFAULT_NAME_POSITION: NamePosition = { xPct: 34, yPct: 74, fontSizePct: 4, color: '#ffffff', align: 'center' };
-const DEFAULT_QR_POSITION: QrPosition = { xPct: 78, yPct: 85, sizePct: 13 };
-const DEFAULT_RSVP_AREA: RsvpArea = { y1Pct: 90, y2Pct: 98 };
+const DEFAULT_NAME_POSITION: NamePosition = { xPct: 34, yPct: 74, fontSizePct: 3, color: '#ffffff', align: 'center' };
+const DEFAULT_QR_POSITION: QrPosition = { xPct: 78, yPct: 85, sizePct: 11 };
+const DEFAULT_RSVP_AREA: RsvpArea = { y1Pct: 95, y2Pct: 99 };
 const DEFAULT_MAP_LINK_AREA: MapLinkArea = { xPct: 78, yPct: 72, wPct: 19, hPct: 5 };
 
 type ClickMode = 'name' | 'qr' | 'mapLink';
