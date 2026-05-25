@@ -1,4 +1,5 @@
 import { getCustomerByRsvpToken } from '@/lib/store';
+import { RsvpButtons } from './RsvpButtons';
 
 export default async function RsvpRespondPage({
   searchParams,
@@ -57,31 +58,11 @@ export default async function RsvpRespondPage({
             <p className="text-sm text-[#64748B] mt-2">Will you be attending the event?</p>
           </div>
 
-          <div className="space-y-3">
-            <a
-              href={attendingUrl}
-              className="flex items-center justify-center gap-3 w-full py-4 px-5 rounded-xl bg-[#DCFCE7] border-2 border-[#86EFAC] text-[#15803D] font-black text-base hover:bg-[#BBF7D0] hover:border-[#4ADE80] active:scale-[0.98] transition-all no-underline"
-            >
-              <span className="text-2xl">✅</span>
-              <span>Yes, I&apos;ll be there!</span>
-            </a>
-
-            <a
-              href={maybeUrl}
-              className="flex items-center justify-center gap-3 w-full py-4 px-5 rounded-xl bg-[#FEF9C3] border-2 border-[#FDE047] text-[#854D0E] font-black text-base hover:bg-[#FEF08A] hover:border-[#FACC15] active:scale-[0.98] transition-all no-underline"
-            >
-              <span className="text-2xl">🤔</span>
-              <span>Maybe — not sure yet</span>
-            </a>
-
-            <a
-              href={notGoingUrl}
-              className="flex items-center justify-center gap-3 w-full py-4 px-5 rounded-xl bg-[#FEF2F2] border-2 border-[#FCA5A5] text-[#DC2626] font-black text-base hover:bg-[#FEE2E2] hover:border-[#F87171] active:scale-[0.98] transition-all no-underline"
-            >
-              <span className="text-2xl">😔</span>
-              <span>Sorry, can&apos;t make it</span>
-            </a>
-          </div>
+          <RsvpButtons
+            attendingUrl={attendingUrl}
+            maybeUrl={maybeUrl}
+            notGoingUrl={notGoingUrl}
+          />
 
           <p className="text-center text-xs text-[#94A3B8]">
             Tap a button above to confirm your attendance. You can only respond once.
